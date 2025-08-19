@@ -8,7 +8,6 @@ import paneerTikka from '../assets/images/paneer-tika.webp';
 import gulabJamun from '../assets/images/gulab-jamun.webp';
 import pooriSabji from '../assets/images/poori-sabji.webp';
 import roganJosh from '../assets/images/rogan-josh.jpg';
-/*import { color } from 'framer-motion';*/
 
 export const popularDishes = [
     {
@@ -74,7 +73,7 @@ export const popularDishes = [
   ];
 
 
-/*export const tables = [
+export const tables = [
     { id: 1, name: "Table 1", status: "Booked", initial: "AM", seats: 4 },
     { id: 2, name: "Table 2", status: "Available", initial: "MB", seats: 6 },
     { id: 3, name: "Table 3", status: "Booked", initial: "JS", seats: 2 },
@@ -90,9 +89,9 @@ export const popularDishes = [
     { id: 13, name: "Table 13", status: "Booked", initial: "EK", seats: 2 },
     { id: 14, name: "Table 14", status: "Available", initial: "QN", seats: 6 },
     { id: 15, name: "Table 15", status: "Booked", initial: "TW", seats: 3 }
-  ]; */
+  ]; 
   
-/* export const startersItem = [
+ export const startersItem = [
     {
       id: 1,
       name: "Paneer Tikka",
@@ -364,11 +363,10 @@ export const salads = [
     id: 5,
     name: "Tuna Salad",
     price: 350,
-  
+    category: "Non-Vegetarian"
   }
 ];
-
-
+{/*ETO YUNG SA MENU */}
 export const menus = [
   { id: 1, name: "Starters", bgColor: "#b73e3e" ,icon: "🍲", items: startersItem },
   { id: 2, name: "Main Course", bgColor: "#5b45b0" ,icon: "🍛", items: mainCourse },
@@ -378,7 +376,7 @@ export const menus = [
   { id: 6, name: "Pizzas", bgColor: "#285430" ,icon: "🍕", items: pizzas },
   { id: 7, name: "Alcoholic Drinks", bgColor: "#b73e3e" ,icon: "🍺", items: alcoholicDrinks },
   { id: 8, name: "Salads", bgColor: "#5b45b0" ,icon: "🥗", items: salads }
-]
+];
 
 export const metricsData = [
   { title: "Revenue", value: "₹50,846.90", percentage: "12%", color: "#025cca", isIncrease: false },
@@ -433,10 +431,11 @@ export const orders = [
   },
 ];
 
-
-const buttons = [
-  { label: "Add Table", icon: <MdTableBar />, action: "table" },
-  { label: "Add Category", icon: <MdCategory />, action: "category" },
-  { label: "Add Dishes", icon: <BiSolidDish />, action: "dishes" },
+// Button configurations without JSX - handle icons in components
+export const buttons = [
+  { label: "Add Table", iconName: "MdTableBar", action: "table" },
+  { label: "Add Category", iconName: "MdCategory", action: "category" },
+  { label: "Add Dishes", iconName: "BiSolidDish", action: "dishes" },
 ];
-const tabs = ["Metrics", "Orders", "Payments"]; */
+
+export const tabs = ["Metrics", "Orders", "Payments"];

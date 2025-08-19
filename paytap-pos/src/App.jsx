@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import Auth from "./pages/Auth";
 import Orders from "./pages/Orders";
 import Header from "./components/shared/Header";
+import  Menu  from "./pages/Menu";
 
 function App() {
   
@@ -14,6 +15,8 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/menu" element={<Menu />} />
+          <Route path="*" element={<div>Not Found</div>}/>
         </Routes>
       </Router>  
     </>
