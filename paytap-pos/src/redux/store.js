@@ -8,7 +8,7 @@ const store = configureStore({
         cart : cartSlice
     },
 
-    devTools: import.meta.env.NODE_ENV !=="prodcution",
+    devTools: import.meta.env.NODE_ENV !=="production",
 });
 
 export default store;

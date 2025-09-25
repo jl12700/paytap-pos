@@ -24,7 +24,7 @@ const BottomNav = () => {
             <button className='flex items-center justify-center text-[#ababab] w-[200px]'><CiCircleMore className="inline mr-2 size={20}" /><p>More</p></button>
         
             <button
-            disabled={isActive("/Menu")} 
+            disabled={location.pathname === "/menu"} 
             onClick={openModal}
             className='absolute bottom-5 bg-[#F6B100] text-[#f5f5f5] rounded-full p-3 items=center'>
                 <BiSolidDish size={30} />
