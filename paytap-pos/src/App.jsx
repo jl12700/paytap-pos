@@ -4,6 +4,9 @@ import Auth from "./pages/Auth";
 import Orders from "./pages/Orders";
 import Header from "./components/shared/Header";
 import  Menu  from "./pages/Menu";
+import SimpleMenuManager from "./components/SimpleMenuManager";
+import SimpleQuickSetup from "./components/SimpleQuickSetup";
+import DatabaseTest from "./components/DatabaseTest";
 
 function App() {
   
@@ -18,6 +21,9 @@ function App() {
           <Route path="/menu" element={<Menu />} />
           <Route path="*" element={<div>Not Found</div>}/>
         </Routes>
+        <SimpleMenuManager />
+        <SimpleQuickSetup />
+        <DatabaseTest />
       </Router>  
     </>
   )

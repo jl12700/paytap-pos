@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { menus } from "../../constants";
 import { GrRadialSelected } from "react-icons/gr";
 import { FaShoppingCart } from "react-icons/fa";
 import { useDispatch } from "react-redux";
+import { addItems } from "../../redux/slices/cartSlice";
+import { useMenuData } from "../../hooks/useMenuData";
 
 const MenuContainer = () => {
-  const [selected, setSelected] = useState(menus[0]);
+  const { menuItems, loading, error } = useMenuData();
   // Change: Use object to track counts for each item individually
   const [itemCounts, setItemCounts] = useState({});
   const [itemId, setItemId] = useState();
@@ -54,41 +55,41 @@ const MenuContainer = () => {
   }
 
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-white text-xl">Loading menu...</div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-500 text-xl">Error loading menu: {error.message}</div>
+      </div>
+    );
+  }
+
+  // No data state
+  if (!menuItems || menuItems.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-white text-xl">No menu items available. Add some items using the + button.</div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="grid grid-cols-4 gap-4 px-10 py-4 w-[100%]">
-        {menus.map((menu) => {
-          return (
-            <div
-              key={menu.id}
-              className="flex flex-col items-start justify-between p-4 rounded-lg h-[100px] cursor-pointer"
-              style={{ backgroundColor: menu.bgColor }}
-              onClick={() => {
-                setSelected(menu);
-                // Reset all item counts when switching categories
-                setItemCounts({});
-              }}
-            >
-              <div className="flex items-center justify-between w-full">
-                <h1 className="text-[#f5f5f5] text-lg font-semibold">
-                  {menu.icon} {menu.name}
-                </h1>
-                {selected.id === menu.id && (
-                  <GrRadialSelected className="text-white" size={20} />
-                )}
-              </div>
-              <p className="text-[#ababab] text-sm font-semibold">
-                {menu.items.length} Items
-              </p>
-            </div>
-          );
-        })}
+      <div className="px-10 py-4">
+        <h2 className="text-[#f5f5f5] text-2xl font-bold mb-4">Menu Items</h2>
       </div>
 
-      <hr className="border-[#2a2a2a] border-t-2 mt-4" />
-
       <div className="grid grid-cols-4 gap-4 px-10 py-4 w-[100%]">
-        {selected?.items.map((item) => {
+        {menuItems.map((item) => {
           return (
             <div
               key={item.id}
