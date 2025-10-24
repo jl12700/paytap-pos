@@ -16,7 +16,7 @@ const Conversion = ({ show, onClose }) => {
   const [showConversionPopup, setShowConversionPopup] = useState(false);
   const [conversionData, setConversionData] = useState({
     vendorName: 'POS Vendor',
-    pointBalance: 100,
+    pointBalance: 100, // ✅ This is the balance shown beside the title
     chosenPaymentMethod: 'gcash',
     conversionAmount: ''
   });
@@ -147,7 +147,17 @@ const Conversion = ({ show, onClose }) => {
           ×
         </button>
 
-        <h1 className="text-2xl font-bold text-white mb-6">Request Conversion</h1>
+        {/* ✅ Title with point balance beside it */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-white">
+            Request Conversion
+          </h1>
+          <div className="bg-blue-600/20 px-3 py-1 rounded-lg">
+            <span className="text-sm text-yellow-400 font-medium">
+              Points: {conversionData.pointBalance}
+            </span>
+          </div>
+        </div>
 
         {/* Form */}
         <form className="space-y-6">
@@ -256,7 +266,7 @@ const Conversion = ({ show, onClose }) => {
           )}
         </div>
 
-        {/* Confirmation Modal (inside popup) */}
+        {/* Confirmation Modal */}
         {showConversionPopup && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
             <div className="bg-[#2a2a2a] rounded-lg p-6 w-full max-w-sm">
