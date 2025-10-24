@@ -148,16 +148,18 @@ const Conversion = ({ show, onClose }) => {
         </button>
 
         {/* ✅ Title with point balance beside it */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-white">
-            Request Conversion
-          </h1>
-          <div className="bg-blue-600/20 px-3 py-1 rounded-lg">
-            <span className="text-sm text-yellow-400 font-medium">
-              Points: {conversionData.pointBalance}
-            </span>
-          </div>
-        </div>
+        {/* ✅ Title with point balance beside it (adjusted spacing) */}
+<div className="flex justify-between items-center mb-6 pr-8">
+  <div className="flex items-center gap-3">
+    <h1 className="text-2xl font-bold text-white">Request Conversion</h1>
+    <div className="bg-blue-600/20 px-3 py-1 rounded-lg">
+      <span className="text-sm text-yellow-400 font-medium">
+        Points: {conversionData.pointBalance}
+      </span>
+    </div>
+  </div>
+</div>
+
 
         {/* Form */}
         <form className="space-y-6">
