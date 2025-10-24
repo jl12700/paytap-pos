@@ -4,6 +4,7 @@ import Auth from "./pages/Auth";
 import Orders from "./pages/Orders";
 import Header from "./components/shared/Header";
 import  Menu  from "./pages/Menu";
+import Conversion from "./pages/Conversion";
 import SimpleMenuManager from "./components/SimpleMenuManager";
 import SimpleQuickSetup from "./components/SimpleQuickSetup";
 import DatabaseTest from "./components/DatabaseTest";
@@ -19,6 +20,7 @@ function App() {
           <Route path="/auth" element={<Auth />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/menu" element={<Menu />} />
+          <Route path="/conversion" element={<Conversion />} />
           <Route path="*" element={<div>Not Found</div>}/>
         </Routes>
         <SimpleMenuManager />
