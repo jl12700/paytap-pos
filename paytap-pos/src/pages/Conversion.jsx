@@ -126,6 +126,7 @@ const Conversion = () => {
     setConversionData(prev => ({
       ...prev,
       chosenPaymentMethod: formData.paymentMethod,
+      conversionAmount: formData.amount // Reflects user input from main form
     }));
     setShowConversionPopup(true);
   };
@@ -364,15 +365,13 @@ const Conversion = () => {
                 {/* Conversion Amount */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Enter Point Conversion Amount *
+                    Point Conversion Amount *
                   </label>
                   <div className="space-y-2">
                     <input
                       type="number"
                       value={conversionData.conversionAmount}
-                      onChange={(e) => setConversionData(prev => ({ ...prev, conversionAmount: e.target.value }))}
                       className="w-full p-3 bg-[#1a1a1a] border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="120"
                       required
                     />
                     <p className="text-gray-400 text-sm">
