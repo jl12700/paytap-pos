@@ -7,7 +7,7 @@ const Conversion = ({ show, onClose }) => {
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    paymentMethod: 'gcash',
+    paymentMethod: 'paytap',
     cardNumber: '',
     amount: ''
   });
@@ -17,7 +17,7 @@ const Conversion = ({ show, onClose }) => {
   const [conversionData, setConversionData] = useState({
     vendorName: 'POS Vendor',
     pointBalance: 100, // ✅ This is the balance shown beside the title
-    chosenPaymentMethod: 'gcash',
+    chosenPaymentMethod: 'paytap',
     conversionAmount: ''
   });
 
@@ -25,7 +25,7 @@ const Conversion = ({ show, onClose }) => {
   const [loading, setLoading] = useState(false);
 
   const paymentMethods = [
-    { id: 'gcash', name: 'GCash', icon: FaQrcode, color: 'bg-blue-500' },
+    { id: 'paytap', name: 'PayTap', icon: FaQrcode, color: 'bg-blue-500' },
     { id: 'cash', name: 'Cash', icon: FaWallet, color: 'bg-green-500' }
   ];
 
@@ -61,8 +61,8 @@ const Conversion = ({ show, onClose }) => {
       return;
     }
 
-    if (formData.paymentMethod === 'gcash' && !formData.cardNumber) {
-      alert('GCash number is required');
+    if (formData.paymentMethod === 'paytap' && !formData.cardNumber) {
+      alert('PayTap number is required');
       return;
     }
 
@@ -71,13 +71,10 @@ const Conversion = ({ show, onClose }) => {
       const generatedTransactionCode = `TXN-${Date.now()}`;
       setTransactionCode(generatedTransactionCode);
 
-      // Convert 'gcash' to 'paytap' for database consistency
-      const normalizedPaymentMethod = conversionData.chosenPaymentMethod === 'gcash' ? 'paytap' : conversionData.chosenPaymentMethod;
-      
       const conversionRecord = {
         vendorName: conversionData.vendorName,
         pointBalance: conversionData.pointBalance,
-        paymentMethod: normalizedPaymentMethod,
+        paymentMethod: conversionData.chosenPaymentMethod,
         conversionAmount: parseInt(conversionData.conversionAmount),
         cashAmount: parseFloat(conversionData.conversionAmount),
         requestStatus: 'pending',
@@ -93,7 +90,7 @@ const Conversion = ({ show, onClose }) => {
       setConversionData({
         vendorName: 'POS Vendor',
         pointBalance: 100,
-        chosenPaymentMethod: 'gcash',
+        chosenPaymentMethod: 'paytap',
         conversionAmount: ''
       });
 
@@ -112,8 +109,8 @@ const Conversion = ({ show, onClose }) => {
       return;
     }
 
-    if (formData.paymentMethod === 'gcash' && !formData.cardNumber) {
-      alert('Please enter GCash number');
+    if (formData.paymentMethod === 'paytap' && !formData.cardNumber) {
+      alert('Please enter PayTap number');
       return;
     }
 
@@ -211,15 +208,15 @@ const Conversion = ({ show, onClose }) => {
             </div>
           </div>
 
-          {formData.paymentMethod === 'gcash' && (
+          {formData.paymentMethod === 'paytap' && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">GCash Number *</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">PayTap Number *</label>
               <input
                 type="text"
                 name="cardNumber"
                 value={formData.cardNumber}
                 onChange={handleInputChange}
-                placeholder="Enter GCash number"
+                placeholder="Enter PayTap number"
                 className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white"
                 required
               />

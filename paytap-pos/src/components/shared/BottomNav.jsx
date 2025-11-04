@@ -24,7 +24,7 @@ const BottomNav = () => {
   const [conversionData] = useState({
     vendorName: 'POS Vendor',
     pointBalance: 100,
-    chosenPaymentMethod: 'gcash',
+    chosenPaymentMethod: 'paytap',
     conversionAmount: 0,
   });
 
