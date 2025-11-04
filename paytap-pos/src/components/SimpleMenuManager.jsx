@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { addMenuItem, getMenuItems, updateMenuItem, deleteMenuItem } from '../firebase/menuService';
-import { FaPlus, FaEdit, FaTrash, FaTimes, FaSave } from 'react-icons/fa';
+import { FaEdit, FaTrash, FaTimes, FaSave } from 'react-icons/fa';
 
-const SimpleMenuManager = () => {
-  const [isOpen, setIsOpen] = useState(false);
+const SimpleMenuManager = ({ isOpen, onClose }) => {
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -99,26 +98,16 @@ const SimpleMenuManager = () => {
     }
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-full shadow-lg z-50 transition-all duration-200 hover:scale-105"
-        title="Manage Menu Items"
-      >
-        <FaPlus size={24} />
-      </button>
-    );
-  }
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-2xl font-bold text-gray-800">Menu Items Manager</h2>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
           >
             <FaTimes size={24} />

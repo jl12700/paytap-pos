@@ -144,7 +144,7 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
               {paymentMethod === 'gcash' ? (
                 <>
                   <FaQrcode className="text-blue-400 text-xl" />
-                  <span className="text-white font-semibold">GCash</span>
+                  <span className="text-white font-semibold">PayTap</span>
                 </>
               ) : (
                 <>

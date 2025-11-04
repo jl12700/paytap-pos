@@ -8,6 +8,8 @@ import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
 import { addDoc, serverTimestamp } from "firebase/firestore";
 import CheckoutModal from "../components/CheckoutModal";
+import { getCurrentUser } from "../firebase/authService";
+import { addPoints } from "../firebase/pointsService";
 
 
 const Menu = () => {
@@ -68,6 +70,9 @@ const Menu = () => {
 
   const handlePaymentSuccess = async (amount) => {
     try {
+      // Convert 'gcash' to 'paytap' for database consistency
+      const normalizedPaymentMethod = paymentMethod === 'gcash' ? 'paytap' : paymentMethod;
+      
       // Save order to Firebase
       await addDoc(collection(db, "orders"), {
         customerName: customerData?.customerName || "Unknown",
@@ -81,14 +86,27 @@ const Menu = () => {
           subtotal: item.price * item.qty,
         })),
         totalAmount: total,
-        paymentMethod: paymentMethod,
+        paymentMethod: normalizedPaymentMethod,
         createdAt: serverTimestamp(),
         status: "Completed"
       });
 
-      // TODO: Update vendor points based on amount
-      // This would typically update a vendor document in Firestore
-      console.log(`Updating vendor points by ${amount} for payment method: ${paymentMethod}`);
+      // Update vendor points for PayTap payments
+      if (normalizedPaymentMethod === 'paytap') {
+        try {
+          const currentUser = getCurrentUser();
+          if (currentUser) {
+            // Add points equal to the order amount (1 peso = 1 point)
+            // You can adjust this conversion rate as needed
+            const pointsToAdd = Math.floor(amount);
+            await addPoints(currentUser.uid, pointsToAdd);
+            console.log(`Added ${pointsToAdd} points to vendor account`);
+          }
+        } catch (error) {
+          console.error('Error updating vendor points:', error);
+          // Don't fail the order if points update fails
+        }
+      }
 
       alert("Order successfully placed!");
       setCart([]); // ✅ Clear cart after placing order
@@ -137,12 +155,7 @@ const Menu = () => {
                 className="bg-[#2a2a2a] rounded-lg p-4 flex flex-col justify-between shadow-md hover:scale-105 transition-transform"
               >
                 <div>
-                  <img
-                    src={item.imageUrl || "/placeholder.png"}
-                    alt={item.name}
-                    className="h-32 w-full object-cover rounded-md mb-3"
-                  />
-                  <h2 className="text-[#f5f5f5] text-lg font-semibold">
+                  <h2 className="text-[#f5f5f5] text-lg font-semibold mb-2">
                     {item.name}
                   </h2>
                   <p className="text-[#ababab] text-sm mb-2">
@@ -258,7 +271,7 @@ const Menu = () => {
                     paymentMethod === 'gcash' ? 'text-blue-400' : 'text-gray-400'
                   }`}
                 >
-                  GCash
+                  PayTap
                 </span>
               </button>
               <button

@@ -131,11 +131,14 @@ const Auth = () => {
                 )}
 
                 {/* Sign In Form */}
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
+                    {/* Hidden field to trick browsers into not autofilling */}
+                    <input type="text" name="fake-username" autoComplete="username" style={{ display: 'none' }} tabIndex="-1" />
+                    
                     {/* Email Field */}
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-                            Email / Username
+                            Email
                         </label>
                         <input
                             type="email"
@@ -143,6 +146,8 @@ const Auth = () => {
                             name="email"
                             value={formData.email}
                             onChange={handleInputChange}
+                            autoComplete="off"
+                            inputMode="email"
                             className={`w-full p-3 bg-[#2a2a2a] border rounded-lg text-white focus:outline-none focus:ring-2 transition ${
                                 errors.email 
                                     ? 'border-red-500 focus:ring-red-500' 
@@ -168,6 +173,7 @@ const Auth = () => {
                                 name="password"
                                 value={formData.password}
                                 onChange={handleInputChange}
+                                autoComplete="new-password"
                                 className={`w-full p-3 bg-[#2a2a2a] border rounded-lg text-white focus:outline-none focus:ring-2 transition pr-10 ${
                                     errors.password 
                                         ? 'border-red-500 focus:ring-red-500' 

@@ -95,7 +95,9 @@ const OrderCard = ({ order }) => {
                 {order.paymentMethod && (
                     <div className='flex items-center justify-between mt-2'>
                         <p className='text-[#ababab] text-sm'>Payment:</p>
-                        <p className='text-[#ababab] text-sm capitalize'>{order.paymentMethod}</p>
+                        <p className='text-[#ababab] text-sm capitalize'>
+                            {order.paymentMethod === 'gcash' || order.paymentMethod === 'paytap' ? 'PayTap' : order.paymentMethod}
+                        </p>
                     </div>
                 )}
             </div>

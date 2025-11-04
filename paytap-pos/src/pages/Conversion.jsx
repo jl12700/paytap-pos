@@ -71,10 +71,13 @@ const Conversion = ({ show, onClose }) => {
       const generatedTransactionCode = `TXN-${Date.now()}`;
       setTransactionCode(generatedTransactionCode);
 
+      // Convert 'gcash' to 'paytap' for database consistency
+      const normalizedPaymentMethod = conversionData.chosenPaymentMethod === 'gcash' ? 'paytap' : conversionData.chosenPaymentMethod;
+      
       const conversionRecord = {
         vendorName: conversionData.vendorName,
         pointBalance: conversionData.pointBalance,
-        paymentMethod: conversionData.chosenPaymentMethod,
+        paymentMethod: normalizedPaymentMethod,
         conversionAmount: parseInt(conversionData.conversionAmount),
         cashAmount: parseFloat(conversionData.conversionAmount),
         requestStatus: 'pending',

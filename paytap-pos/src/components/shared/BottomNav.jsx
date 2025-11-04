@@ -9,6 +9,7 @@ import { useDispatch } from 'react-redux';
 import { setCustomer } from '../../redux/slices/customerSlice';
 import Modal from './Modal';
 import Conversion from '../../pages/Conversion'; // ✅ import your popup component
+import SimpleMenuManager from '../SimpleMenuManager';
 
 const BottomNav = () => {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ const BottomNav = () => {
   const dispatch = useDispatch();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConversionOpen, setIsConversionOpen] = useState(false);
+  const [isMenuManagerOpen, setIsMenuManagerOpen] = useState(false);
   const [name, setName] = useState('');
   
   // Default conversion data
@@ -62,7 +64,8 @@ const BottomNav = () => {
 
       {/* More */}
       <button 
-        className='flex items-center justify-center text-[#ababab] w-[200px]'
+        onClick={() => setIsMenuManagerOpen(true)}
+        className='flex items-center justify-center text-[#ababab] w-[200px] hover:text-[#f5f5f5] transition'
       >
         <CiCircleMore className="inline mr-2" /> <p>More</p>
       </button>
@@ -104,6 +107,12 @@ const BottomNav = () => {
         show={isConversionOpen}
         onClose={() => setIsConversionOpen(false)}
         conversionData={conversionData}
+      />
+
+      {/* Menu Manager Modal */}
+      <SimpleMenuManager
+        isOpen={isMenuManagerOpen}
+        onClose={() => setIsMenuManagerOpen(false)}
       />
     </div>
   );

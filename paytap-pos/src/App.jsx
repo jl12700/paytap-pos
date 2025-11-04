@@ -4,7 +4,6 @@ import Auth from "./pages/Auth";
 import Orders from "./pages/Orders";
 import Header from "./components/shared/Header";
 import Menu from "./pages/Menu";
-import SimpleMenuManager from "./components/SimpleMenuManager";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Layout component for protected routes
@@ -13,7 +12,6 @@ const ProtectedLayout = ({ children }) => {
     <>
       <Header />
       {children}
-      <SimpleMenuManager />
     </>
   );
 };

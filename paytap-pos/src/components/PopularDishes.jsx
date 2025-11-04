@@ -56,10 +56,6 @@ const PopularDishes = () => {
 
       // Combine popularity data with menu item details
       const dishes = Object.values(itemCounts)
-        .map((item) => ({
-          ...item,
-          imageUrl: menuItemsMap[item.id]?.imageUrl || '',
-        }))
         .sort((a, b) => b.count - a.count) // Sort by popularity
         .slice(0, 10); // Show top 10
 
@@ -107,19 +103,11 @@ const PopularDishes = () => {
                     <h1 className="text-[#f5f5f5] font-bold text-xl mr-4">
                       {index + 1 < 10 ? `0${index + 1}` : index + 1}
                     </h1>
-                    {dish.imageUrl ? (
-                      <img
-                        src={dish.imageUrl}
-                        alt={dish.name}
-                        className="w-[50px] h-[50px] rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-[50px] h-[50px] rounded-full bg-gray-600 flex items-center justify-center">
-                        <span className="text-white text-sm font-bold">
-                          {dish.name?.substring(0, 2).toUpperCase() || '??'}
-                        </span>
-                      </div>
-                    )}
+                    <div className="w-[50px] h-[50px] rounded-full bg-gray-600 flex items-center justify-center">
+                      <span className="text-white text-sm font-bold">
+                        {dish.name?.substring(0, 2).toUpperCase() || '??'}
+                      </span>
+                    </div>
                     <div>
                       <h1 className="text-[#f5f5f5] font-semibold tracking-wide">{dish.name}</h1>
                       <p className="text-[#f5f5f5] text-sm font-semibold mt-1">

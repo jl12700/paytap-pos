@@ -47,7 +47,12 @@ const ReceiptModal = ({ isOpen, onClose, order }) => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400 text-sm">Payment Method</span>
-                <span className="text-white font-semibold capitalize">{order.paymentMethod || 'N/A'}</span>
+                <span className="text-white font-semibold">
+                  {order.paymentMethod === 'gcash' || order.paymentMethod === 'GCash' || order.paymentMethod === 'paytap'
+                    ? 'PayTap' 
+                    : order.paymentMethod ? order.paymentMethod.charAt(0).toUpperCase() + order.paymentMethod.slice(1) 
+                    : 'N/A'}
+                </span>
               </div>
             </div>
           </div>

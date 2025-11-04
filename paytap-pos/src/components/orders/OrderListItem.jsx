@@ -82,7 +82,9 @@ const OrderListItem = ({ order }) => {
                                     {order.paymentMethod && (
                                         <>
                                             <span>•</span>
-                                            <span className='capitalize'>{order.paymentMethod}</span>
+                                            <span className='capitalize'>
+                                                {order.paymentMethod === 'gcash' || order.paymentMethod === 'paytap' ? 'PayTap' : order.paymentMethod}
+                                            </span>
                                         </>
                                     )}
                                 </div>
