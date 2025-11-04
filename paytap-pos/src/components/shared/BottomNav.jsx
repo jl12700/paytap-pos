@@ -5,12 +5,15 @@ import { SiConvertio } from "react-icons/si";
 import { CiCircleMore } from 'react-icons/ci';
 import { BiSolidDish } from 'react-icons/bi';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { setCustomer } from '../../redux/slices/customerSlice';
 import Modal from './Modal';
 import Conversion from '../../pages/Conversion'; // ✅ import your popup component
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConversionOpen, setIsConversionOpen] = useState(false);
   const [name, setName] = useState('');
@@ -22,6 +25,14 @@ const BottomNav = () => {
     chosenPaymentMethod: 'gcash',
     conversionAmount: 0,
   });
+
+  const handleCreateOrder = () => {
+    if (name.trim()) {
+      dispatch(setCustomer({ name }));
+      navigate("/menu");
+      setIsModalOpen(false);
+    }
+  };
 
   return (
     <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex justify-around z-50'>
@@ -81,7 +92,7 @@ const BottomNav = () => {
         </div>
 
         <button 
-          onClick={() => navigate("/menu")}
+          onClick={handleCreateOrder}
           className='w-full bg-[#F6B100] text-[#f5f5f5] rounded-lg py-3 mt-8 hover:bg-yellow-700'
         >
           Create Order
