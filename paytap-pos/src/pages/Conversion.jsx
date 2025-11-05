@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaCreditCard, FaQrcode, FaWallet, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import { addConversion, getConversions } from '../firebase/conversionService';
+import { getCurrentUser } from '../firebase/authService';
 
 const Conversion = ({ show, onClose }) => {
   if (!show) return null;
@@ -15,14 +16,25 @@ const Conversion = ({ show, onClose }) => {
   const [transactionCode, setTransactionCode] = useState('');
   const [showConversionPopup, setShowConversionPopup] = useState(false);
   const [conversionData, setConversionData] = useState({
-    vendorName: 'POS Vendor',
-    pointBalance: 100, // ✅ This is the balance shown beside the title
+    vendorName: '',
+    pointBalance: 0,
     chosenPaymentMethod: 'paytap',
     conversionAmount: ''
   });
 
   const [recentConversions, setRecentConversions] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Initialize vendor data from current user
+  useEffect(() => {
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      setConversionData(prev => ({
+        ...prev,
+        vendorName: currentUser.email || 'Unknown Vendor'
+      }));
+    }
+  }, [show]);
 
   const paymentMethods = [
     { id: 'paytap', name: 'PayTap', icon: FaQrcode, color: 'bg-blue-500' },
@@ -87,11 +99,22 @@ const Conversion = ({ show, onClose }) => {
 
       alert(`Conversion request submitted successfully!\nTransaction Code: ${generatedTransactionCode}`);
       setShowConversionPopup(false);
+      
+      // Reset form but keep vendor name
+      const currentUser = getCurrentUser();
       setConversionData({
-        vendorName: 'POS Vendor',
-        pointBalance: 100,
+        vendorName: currentUser?.email || 'Unknown Vendor',
+        pointBalance: 0,
         chosenPaymentMethod: 'paytap',
         conversionAmount: ''
+      });
+      
+      // Reset form data
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        paymentMethod: 'paytap',
+        cardNumber: '',
+        amount: ''
       });
 
       await loadRecentConversions();
