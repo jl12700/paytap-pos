@@ -4,6 +4,7 @@ import { MdOutlineReorder } from 'react-icons/md';
 import { SiConvertio } from "react-icons/si";
 import { CiCircleMore } from 'react-icons/ci';
 import { BiSolidDish } from 'react-icons/bi';
+import { FaQuestionCircle } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { setCustomer } from '../../redux/slices/customerSlice';
@@ -34,13 +35,14 @@ const BottomNav = () => {
   const isMenuActive = location.pathname === "/menu";
   const isConversionActive = isConversionOpen;
   const isMenuManagerActive = isMenuManagerOpen;
+  const isContactSupportActive = location.pathname === "/contact-support";
 
   return (
-    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex justify-around z-50'>
+    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex items-center justify-around z-50'>
       {/* Home */}
       <button 
         onClick={() => navigate("/")} 
-        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
           isHomeActive 
             ? 'text-[#f5f5f5] bg-[#343434]' 
             : 'text-[#ababab] hover:text-[#f5f5f5]'
@@ -52,7 +54,7 @@ const BottomNav = () => {
       {/* Sales Tracking */}
       <button 
         onClick={() => navigate("/orders")} 
-        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
           isOrdersActive 
             ? 'text-[#f5f5f5] bg-[#343434]' 
             : 'text-[#ababab] hover:text-[#f5f5f5]'
@@ -61,10 +63,24 @@ const BottomNav = () => {
         <MdOutlineReorder className="inline mr-2" /> <p>Sales Tracking</p>
       </button>
 
+      {/* Create Order Button - Centered */}
+      <button
+        disabled={location.pathname === "/menu"}
+        onClick={() => setIsModalOpen(true)}
+        className={`flex items-center justify-center rounded-full p-3 transition ${
+          location.pathname === "/menu"
+            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            : 'bg-[#F6B100] text-[#f5f5f5] hover:bg-yellow-600'
+        }`}
+        title="Create Order"
+      >
+        <BiSolidDish size={30} />
+      </button>
+
       {/* Request Conversion — opens popup instead of routing */}
       <button 
         onClick={() => setIsConversionOpen(true)} 
-        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
           isConversionActive 
             ? 'text-[#f5f5f5] bg-[#343434]' 
             : 'text-[#ababab] hover:text-[#f5f5f5]'
@@ -76,7 +92,7 @@ const BottomNav = () => {
       {/* Menu Management */}
       <button 
         onClick={() => setIsMenuManagerOpen(true)}
-        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
           isMenuManagerActive 
             ? 'text-[#f5f5f5] bg-[#343434]' 
             : 'text-[#ababab] hover:text-[#f5f5f5]'
@@ -85,13 +101,16 @@ const BottomNav = () => {
         <CiCircleMore className="inline mr-2" /> <p>Menu Management</p>
       </button>
 
-      {/* Floating Create Order Button */}
-      <button
-        disabled={location.pathname === "/menu"}
-        onClick={() => setIsModalOpen(true)}
-        className='absolute bottom-5 bg-[#F6B100] text-[#f5f5f5] rounded-full p-3 items-center'
+      {/* Contact Support */}
+      <button 
+        onClick={() => navigate("/contact-support")}
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isContactSupportActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
-        <BiSolidDish size={30} />
+        <FaQuestionCircle className="inline mr-2" /> <p>Contact Support</p>
       </button>
 
       {/* Order Modal */}

@@ -1,7 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
 import Orders from "./pages/Orders";
+import ContactSupport from "./pages/ContactSupport";
 import Header from "./components/shared/Header";
 import Menu from "./pages/Menu";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -22,6 +24,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route
             path="/"
             element={
@@ -48,6 +51,16 @@ function App() {
               <ProtectedRoute>
                 <ProtectedLayout>
                   <Menu />
+                </ProtectedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/contact-support"
+            element={
+              <ProtectedRoute>
+                <ProtectedLayout>
+                  <ContactSupport />
                 </ProtectedLayout>
               </ProtectedRoute>
             }

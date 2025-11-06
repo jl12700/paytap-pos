@@ -6,12 +6,14 @@ import { useNavigate } from 'react-router-dom';
 const EditProfileModal = ({ isOpen, onClose }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isOpen) {
       const currentUser = getCurrentUser();
       setUser(currentUser);
+      setShowLogoutConfirm(false); // Reset confirmation state when modal opens
     }
   }, [isOpen]);
 
@@ -29,7 +31,16 @@ const EditProfileModal = ({ isOpen, onClose }) => {
       alert('An error occurred while logging out.');
     } finally {
       setLoading(false);
+      setShowLogoutConfirm(false);
     }
+  };
+
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleCancelLogout = () => {
+    setShowLogoutConfirm(false);
   };
 
   const getUserDisplayName = () => {
@@ -102,14 +113,38 @@ const EditProfileModal = ({ isOpen, onClose }) => {
 
           {/* Logout Button */}
           <div className='border-t border-gray-700 pt-4'>
-            <button
-              onClick={handleLogout}
-              disabled={loading}
-              className='w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed'
-            >
-              <FaSignOutAlt />
-              {loading ? 'Logging out...' : 'Logout'}
-            </button>
+            {!showLogoutConfirm ? (
+              <button
+                onClick={handleLogoutClick}
+                disabled={loading}
+                className='w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed'
+              >
+                <FaSignOutAlt />
+                Logout
+              </button>
+            ) : (
+              <div className='space-y-3'>
+                <p className='text-gray-300 text-sm text-center mb-2'>
+                  Are you sure you want to logout?
+                </p>
+                <div className='flex gap-3'>
+                  <button
+                    onClick={handleLogout}
+                    disabled={loading}
+                    className='flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed'
+                  >
+                    {loading ? 'Logging out...' : 'Yes'}
+                  </button>
+                  <button
+                    onClick={handleCancelLogout}
+                    disabled={loading}
+                    className='flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed'
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
