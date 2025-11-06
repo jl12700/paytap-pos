@@ -3,6 +3,9 @@ import { FaCreditCard, FaQrcode, FaWallet, FaCheckCircle, FaTimesCircle } from '
 import { addConversion, getConversions } from '../firebase/conversionService';
 import { getCurrentUser } from '../firebase/authService';
 
+import { getVendorPoints, initializeVendor, subtractPoints } from '../firebase/pointsService';
+
+
 const Conversion = ({ show, onClose }) => {
   if (!show) return null;
 
@@ -24,6 +27,7 @@ const Conversion = ({ show, onClose }) => {
 
   const [recentConversions, setRecentConversions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingPoints, setLoadingPoints] = useState(true);
 
   // Initialize vendor data from current user
   useEffect(() => {
@@ -46,9 +50,47 @@ const Conversion = ({ show, onClose }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Fetch user points when modal opens
   useEffect(() => {
-    loadRecentConversions();
-  }, []);
+    if (show) {
+      loadUserPoints();
+      loadRecentConversions();
+    }
+  }, [show]);
+
+  const loadUserPoints = async () => {
+    try {
+      setLoadingPoints(true);
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        // Initialize vendor if doesn't exist
+        await initializeVendor(currentUser.uid, currentUser.email);
+        
+        // Get vendor points
+        const vendorData = await getVendorPoints(currentUser.uid);
+        
+        setConversionData(prev => ({
+          ...prev,
+          vendorName: currentUser.email || 'Unknown Vendor',
+          pointBalance: vendorData.points || 0
+        }));
+      } else {
+        setConversionData(prev => ({
+          ...prev,
+          vendorName: 'Unknown Vendor',
+          pointBalance: 0
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading user points:', error);
+      setConversionData(prev => ({
+        ...prev,
+        pointBalance: 0
+      }));
+    } finally {
+      setLoadingPoints(false);
+    }
+  };
 
   const loadRecentConversions = async () => {
     try {
@@ -97,19 +139,38 @@ const Conversion = ({ show, onClose }) => {
 
       await addConversion(conversionRecord);
 
+      // Subtract points from user account when conversion is submitted
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        try {
+          const pointsToSubtract = Math.floor(amount); // Convert amount to points (1 peso = 1 point)
+          if (pointsToSubtract > 0 && conversionData.pointBalance >= pointsToSubtract) {
+            await subtractPoints(currentUser.uid, pointsToSubtract);
+            console.log(`Subtracted ${pointsToSubtract} points from vendor account`);
+          } else if (pointsToSubtract > conversionData.pointBalance) {
+            alert('Insufficient points balance for this conversion.');
+            setLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error subtracting points:', error);
+          alert('Conversion request submitted, but failed to update points. Please contact support.');
+        }
+      }
+
       alert(`Conversion request submitted successfully!\nTransaction Code: ${generatedTransactionCode}`);
       setShowConversionPopup(false);
       
-      // Reset form but keep vendor name
-      const currentUser = getCurrentUser();
-      setConversionData({
-        vendorName: currentUser?.email || 'Unknown Vendor',
-        pointBalance: 0,
-        chosenPaymentMethod: 'paytap',
-        conversionAmount: ''
-      });
+      // Reload points after conversion
+      await loadUserPoints();
       
       // Reset form data
+      setConversionData(prev => ({
+        ...prev,
+        chosenPaymentMethod: 'paytap',
+        conversionAmount: ''
+      }));
+      
       setFormData({
         date: new Date().toISOString().split('T')[0],
         paymentMethod: 'paytap',
@@ -133,7 +194,7 @@ const Conversion = ({ show, onClose }) => {
     }
 
     if (formData.paymentMethod === 'paytap' && !formData.cardNumber) {
-      alert('Please enter PayTap number');
+      alert('Please enter GCash number');
       return;
     }
 
@@ -177,7 +238,7 @@ const Conversion = ({ show, onClose }) => {
     <h1 className="text-2xl font-bold text-white">Request Conversion</h1>
     <div className="bg-blue-600/20 px-3 py-1 rounded-lg">
       <span className="text-sm text-yellow-400 font-medium">
-        Points: {conversionData.pointBalance}
+        Points: {loadingPoints ? '...' : conversionData.pointBalance.toLocaleString()}
       </span>
     </div>
   </div>
@@ -233,13 +294,13 @@ const Conversion = ({ show, onClose }) => {
 
           {formData.paymentMethod === 'paytap' && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">PayTap Number *</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">GCash Number *</label>
               <input
                 type="text"
                 name="cardNumber"
                 value={formData.cardNumber}
                 onChange={handleInputChange}
-                placeholder="Enter PayTap number"
+                placeholder="Enter GCash number"
                 className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white"
                 required
               />

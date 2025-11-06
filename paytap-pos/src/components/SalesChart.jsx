@@ -17,8 +17,8 @@ const SalesChart = ({ data, type = 'line', period = 'daily' }) => {
     orders: item.orderCount,
   }));
 
-  // Limit to last 30 days for daily, 12 weeks for weekly, 12 months for monthly
-  const maxItems = period === 'daily' ? 30 : period === 'weekly' ? 12 : 12;
+  // Limit to last 30 days for daily, 12 weeks for weekly, 12 months for monthly, 10 years for yearly
+  const maxItems = period === 'daily' ? 30 : period === 'weekly' ? 12 : period === 'monthly' ? 12 : 10;
   const limitedData = chartData.slice(0, maxItems).reverse(); // Reverse to show oldest to newest
 
   return (

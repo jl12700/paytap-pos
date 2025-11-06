@@ -19,14 +19,6 @@ const BottomNav = () => {
   const [isConversionOpen, setIsConversionOpen] = useState(false);
   const [isMenuManagerOpen, setIsMenuManagerOpen] = useState(false);
   const [name, setName] = useState('');
-  
-  // Default conversion data
-  const [conversionData] = useState({
-    vendorName: 'POS Vendor',
-    pointBalance: 100,
-    chosenPaymentMethod: 'paytap',
-    conversionAmount: 0,
-  });
 
   const handleCreateOrder = () => {
     if (name.trim()) {
@@ -36,12 +28,23 @@ const BottomNav = () => {
     }
   };
 
+  // Determine active state based on current location
+  const isHomeActive = location.pathname === "/";
+  const isOrdersActive = location.pathname === "/orders";
+  const isMenuActive = location.pathname === "/menu";
+  const isConversionActive = isConversionOpen;
+  const isMenuManagerActive = isMenuManagerOpen;
+
   return (
     <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex justify-around z-50'>
       {/* Home */}
       <button 
         onClick={() => navigate("/")} 
-        className='flex items-center justify-center text-[#f5f5f5] bg-[#343434] w-[200px] rounded-[20px]'
+        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+          isHomeActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <FaHome className="inline mr-2" /> Home
       </button>
@@ -49,7 +52,11 @@ const BottomNav = () => {
       {/* Sales Tracking */}
       <button 
         onClick={() => navigate("/orders")} 
-        className='flex items-center justify-center text-[#ababab] w-[200px]'
+        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+          isOrdersActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <MdOutlineReorder className="inline mr-2" /> <p>Sales Tracking</p>
       </button>
@@ -57,17 +64,25 @@ const BottomNav = () => {
       {/* Request Conversion — opens popup instead of routing */}
       <button 
         onClick={() => setIsConversionOpen(true)} 
-        className='flex items-center justify-center text-[#ababab] w-[200px]'
+        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+          isConversionActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <SiConvertio className="inline mr-2" /> <p>Request Conversion</p>
       </button>
 
-      {/* More */}
+      {/* Menu Management */}
       <button 
         onClick={() => setIsMenuManagerOpen(true)}
-        className='flex items-center justify-center text-[#ababab] w-[200px] hover:text-[#f5f5f5] transition'
+        className={`flex items-center justify-center w-[200px] rounded-[20px] transition ${
+          isMenuManagerActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
-        <CiCircleMore className="inline mr-2" /> <p>More</p>
+        <CiCircleMore className="inline mr-2" /> <p>Menu Management</p>
       </button>
 
       {/* Floating Create Order Button */}
@@ -106,7 +121,6 @@ const BottomNav = () => {
       <Conversion
         show={isConversionOpen}
         onClose={() => setIsConversionOpen(false)}
-        conversionData={conversionData}
       />
 
       {/* Menu Manager Modal */}
