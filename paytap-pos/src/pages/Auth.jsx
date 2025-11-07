@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { signIn, onAuthStateChange } from '../firebase/authService';
 import logo from '../assets/images/logo.png';
 
@@ -218,6 +218,16 @@ const Auth = () => {
                         {loading ? 'Signing in...' : 'Sign In'}
                     </button>
                 </form>
+
+                {/* Forgot Password Link */}
+                <div className="mt-4 text-center">
+                    <Link
+                        to="/forgot-password"
+                        className="text-blue-400 hover:text-blue-300 text-sm transition underline"
+                    >
+                        Forgot your password? Contact admin to reset your password.
+                    </Link>
+                </div>
 
                 {/* Additional Info */}
                 <div className="mt-6 text-center">

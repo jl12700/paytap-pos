@@ -2,7 +2,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { auth } from './config';
 
@@ -64,6 +65,25 @@ export const onAuthStateChange = (callback) => {
 // Get current user
 export const getCurrentUser = () => {
   return auth.currentUser;
+};
+
+// Send password reset email
+export const sendPasswordReset = async (email) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return {
+      success: true,
+      message: 'Password reset email sent successfully. Please check your inbox.'
+    };
+  } catch (error) {
+    console.error('Password reset error:', error);
+    return {
+      success: false,
+      error: getAuthErrorMessage(error.code),
+      errorCode: error.code,
+      errorMessage: error.message
+    };
+  }
 };
 
 // Helper function to convert Firebase error codes to user-friendly messages

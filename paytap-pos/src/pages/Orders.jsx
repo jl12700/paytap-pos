@@ -7,13 +7,13 @@ import SalesChart from '../components/SalesChart'
 import SalesChartModal from '../components/SalesChartModal'
 import { collection, getDocs, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar } from 'react-icons/fa'
+import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint } from 'react-icons/fa'
 
 const Orders = () => {
     const [viewMode, setViewMode] = useState("cards"); // "cards" or "list"
     const [sortBy, setSortBy] = useState("dateDesc"); // "dateDesc", "dateAsc", "amountDesc", "amountAsc"
     const [activeTab, setActiveTab] = useState("orders"); // "orders" or "history"
-    const [historyPeriod, setHistoryPeriod] = useState("daily"); // "daily", "weekly", "monthly"
+    const [historyPeriod, setHistoryPeriod] = useState("daily"); // "daily", "weekly", "monthly", "yearly"
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [salesHistory, setSalesHistory] = useState([]);
@@ -116,6 +116,11 @@ const Orders = () => {
                 const month = orderDate.getMonth() + 1;
                 periodKey = `${year}-${String(month).padStart(2, '0')}`;
                 periodLabel = orderDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            } else if (historyPeriod === 'yearly') {
+                // Yearly: YYYY format
+                const year = orderDate.getFullYear();
+                periodKey = `${year}`;
+                periodLabel = `${year}`;
             }
 
             if (!ordersByPeriod[periodKey]) {
@@ -165,6 +170,194 @@ const Orders = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orders, historyPeriod, activeTab]);
+
+    const handlePrint = () => {
+        if (activeTab !== 'history' || salesHistory.length === 0) {
+            alert('No sales data available to print.');
+            return;
+        }
+
+        // Calculate summary statistics
+        const totalRevenue = salesHistory.reduce((sum, item) => sum + item.totalRevenue, 0);
+        const totalOrders = salesHistory.reduce((sum, item) => sum + item.orderCount, 0);
+        const averageRevenue = salesHistory.length > 0 ? totalRevenue / salesHistory.length : 0;
+        const averageOrders = salesHistory.length > 0 ? totalOrders / salesHistory.length : 0;
+
+        // Get period label
+        const periodLabels = {
+            daily: 'Daily Sales',
+            weekly: 'Weekly Sales',
+            monthly: 'Monthly Sales',
+            yearly: 'Yearly Sales'
+        };
+        const periodLabel = periodLabels[historyPeriod] || 'Sales History';
+
+        // Create print-friendly HTML
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Sales Report - ${periodLabel}</title>
+                <style>
+                    @media print {
+                        @page {
+                            margin: 1cm;
+                        }
+                        body {
+                            margin: 0;
+                            padding: 20px;
+                            font-family: Arial, sans-serif;
+                        }
+                    }
+                    body {
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        background: white;
+                        color: black;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 2px solid #333;
+                        padding-bottom: 20px;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 24px;
+                        color: #333;
+                    }
+                    .header p {
+                        margin: 5px 0;
+                        color: #666;
+                        font-size: 14px;
+                    }
+                    .stats {
+                        display: grid;
+                        grid-template-columns: repeat(4, 1fr);
+                        gap: 15px;
+                        margin-bottom: 30px;
+                    }
+                    .stat-card {
+                        background: #f5f5f5;
+                        padding: 15px;
+                        border-radius: 8px;
+                        text-align: center;
+                    }
+                    .stat-card h3 {
+                        margin: 0 0 5px 0;
+                        font-size: 12px;
+                        color: #666;
+                        font-weight: normal;
+                    }
+                    .stat-card p {
+                        margin: 0;
+                        font-size: 20px;
+                        font-weight: bold;
+                        color: #333;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 30px;
+                    }
+                    th {
+                        background: #333;
+                        color: white;
+                        padding: 12px;
+                        text-align: left;
+                        font-weight: bold;
+                    }
+                    td {
+                        padding: 10px 12px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .total-row {
+                        font-weight: bold;
+                        background: #e8f5e9 !important;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        padding-top: 20px;
+                        border-top: 1px solid #ddd;
+                        text-align: center;
+                        font-size: 12px;
+                        color: #666;
+                    }
+                    .print-date {
+                        text-align: right;
+                        margin-bottom: 20px;
+                        font-size: 12px;
+                        color: #666;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="print-date">Printed on: ${new Date().toLocaleString()}</div>
+                <div class="header">
+                    <h1>Sales Tracking Report</h1>
+                    <p>${periodLabel}</p>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <h3>Total Revenue</h3>
+                        <p>₱${totalRevenue.toFixed(2)}</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Orders</h3>
+                        <p>${totalOrders}</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Average Revenue</h3>
+                        <p>₱${averageRevenue.toFixed(2)}</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Average Orders</h3>
+                        <p>${averageOrders.toFixed(1)}</p>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Period</th>
+                            <th style="text-align: right;">Orders</th>
+                            <th style="text-align: right;">Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${salesHistory.map(item => `
+                            <tr>
+                                <td>${item.periodLabel}</td>
+                                <td style="text-align: right;">${item.orderCount}</td>
+                                <td style="text-align: right;">₱${item.totalRevenue.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                        <tr class="total-row">
+                            <td><strong>Total</strong></td>
+                            <td style="text-align: right;"><strong>${totalOrders}</strong></td>
+                            <td style="text-align: right;"><strong>₱${totalRevenue.toFixed(2)}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="footer">
+                    <p>Generated by PayTap POS System</p>
+                </div>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        
+        // Wait for content to load, then print
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
 
     const sortedOrders = [...orders].sort((a, b) => {
         switch (sortBy) {
@@ -242,6 +435,14 @@ const Orders = () => {
             {activeTab === 'history' && (
                 <div className='flex items-center gap-2 px-10 py-3 border-b border-gray-700 bg-[#1a1a1a]'>
                     <button
+                        onClick={handlePrint}
+                        className='px-4 py-2 rounded-lg font-semibold transition bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2'
+                        title="Print Sales Report"
+                    >
+                        <FaPrint />
+                        Print
+                    </button>
+                    <button
                         onClick={() => setHistoryPeriod("daily")}
                         className={`px-4 py-2 rounded-lg font-semibold transition ${
                             historyPeriod === "daily"
@@ -270,6 +471,16 @@ const Orders = () => {
                         }`}
                     >
                         Monthly Sales
+                    </button>
+                    <button
+                        onClick={() => setHistoryPeriod("yearly")}
+                        className={`px-4 py-2 rounded-lg font-semibold transition ${
+                            historyPeriod === "yearly"
+                                ? "bg-green-600 text-white"
+                                : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
+                        }`}
+                    >
+                        Yearly Sales
                     </button>
                 </div>
             )}

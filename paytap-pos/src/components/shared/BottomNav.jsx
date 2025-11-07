@@ -4,6 +4,7 @@ import { MdOutlineReorder } from 'react-icons/md';
 import { SiConvertio } from "react-icons/si";
 import { CiCircleMore } from 'react-icons/ci';
 import { BiSolidDish } from 'react-icons/bi';
+import { FaQuestionCircle } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { setCustomer } from '../../redux/slices/customerSlice';
@@ -19,14 +20,6 @@ const BottomNav = () => {
   const [isConversionOpen, setIsConversionOpen] = useState(false);
   const [isMenuManagerOpen, setIsMenuManagerOpen] = useState(false);
   const [name, setName] = useState('');
-  
-  // Default conversion data
-  const [conversionData] = useState({
-    vendorName: 'POS Vendor',
-    pointBalance: 100,
-    chosenPaymentMethod: 'paytap',
-    conversionAmount: 0,
-  });
 
   const handleCreateOrder = () => {
     if (name.trim()) {
@@ -36,12 +29,24 @@ const BottomNav = () => {
     }
   };
 
+  // Determine active state based on current location
+  const isHomeActive = location.pathname === "/";
+  const isOrdersActive = location.pathname === "/orders";
+  const isMenuActive = location.pathname === "/menu";
+  const isConversionActive = isConversionOpen;
+  const isMenuManagerActive = isMenuManagerOpen;
+  const isContactSupportActive = location.pathname === "/contact-support";
+
   return (
-    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex justify-around z-50'>
+    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex items-center justify-around z-50'>
       {/* Home */}
       <button 
         onClick={() => navigate("/")} 
-        className='flex items-center justify-center text-[#f5f5f5] bg-[#343434] w-[200px] rounded-[20px]'
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isHomeActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <FaHome className="inline mr-2" /> Home
       </button>
@@ -49,34 +54,63 @@ const BottomNav = () => {
       {/* Sales Tracking */}
       <button 
         onClick={() => navigate("/orders")} 
-        className='flex items-center justify-center text-[#ababab] w-[200px]'
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isOrdersActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <MdOutlineReorder className="inline mr-2" /> <p>Sales Tracking</p>
+      </button>
+
+      {/* Create Order Button - Centered */}
+      <button
+        disabled={location.pathname === "/menu"}
+        onClick={() => setIsModalOpen(true)}
+        className={`flex items-center justify-center rounded-full p-3 transition ${
+          location.pathname === "/menu"
+            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            : 'bg-[#F6B100] text-[#f5f5f5] hover:bg-yellow-600'
+        }`}
+        title="Create Order"
+      >
+        <BiSolidDish size={30} />
       </button>
 
       {/* Request Conversion — opens popup instead of routing */}
       <button 
         onClick={() => setIsConversionOpen(true)} 
-        className='flex items-center justify-center text-[#ababab] w-[200px]'
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isConversionActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
         <SiConvertio className="inline mr-2" /> <p>Request Conversion</p>
       </button>
 
-      {/* More */}
+      {/* Menu Management */}
       <button 
         onClick={() => setIsMenuManagerOpen(true)}
-        className='flex items-center justify-center text-[#ababab] w-[200px] hover:text-[#f5f5f5] transition'
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isMenuManagerActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
-        <CiCircleMore className="inline mr-2" /> <p>More</p>
+        <CiCircleMore className="inline mr-2" /> <p>Menu Management</p>
       </button>
 
-      {/* Floating Create Order Button */}
-      <button
-        disabled={location.pathname === "/menu"}
-        onClick={() => setIsModalOpen(true)}
-        className='absolute bottom-5 bg-[#F6B100] text-[#f5f5f5] rounded-full p-3 items-center'
+      {/* Contact Support */}
+      <button 
+        onClick={() => navigate("/contact-support")}
+        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
+          isContactSupportActive 
+            ? 'text-[#f5f5f5] bg-[#343434]' 
+            : 'text-[#ababab] hover:text-[#f5f5f5]'
+        }`}
       >
-        <BiSolidDish size={30} />
+        <FaQuestionCircle className="inline mr-2" /> <p>Contact Support</p>
       </button>
 
       {/* Order Modal */}
@@ -106,7 +140,6 @@ const BottomNav = () => {
       <Conversion
         show={isConversionOpen}
         onClose={() => setIsConversionOpen(false)}
-        conversionData={conversionData}
       />
 
       {/* Menu Manager Modal */}
