@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
-import { signOutUser, getCurrentUser } from '../firebase/authService';
+import { FaUserCircle, FaSignOutAlt, FaSave } from 'react-icons/fa';
+import { signOutUser, getCurrentUser, updateUserProfile } from '../firebase/authService';
 import { useNavigate } from 'react-router-dom';
 
 const EditProfileModal = ({ isOpen, onClose }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [showNameConfirm, setShowNameConfirm] = useState(false);
+  const [updatingName, setUpdatingName] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -14,8 +17,17 @@ const EditProfileModal = ({ isOpen, onClose }) => {
       const currentUser = getCurrentUser();
       setUser(currentUser);
       setShowLogoutConfirm(false); // Reset confirmation state when modal opens
+      setShowNameConfirm(false); // Reset name confirmation state
+      // Set initial display name value
+      if (currentUser?.displayName) {
+        setDisplayName(currentUser.displayName);
+      } else if (currentUser?.email) {
+        setDisplayName(currentUser.email.split('@')[0]);
+      } else {
+        setDisplayName('');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
   const handleLogout = async () => {
     setLoading(true);
@@ -41,6 +53,47 @@ const EditProfileModal = ({ isOpen, onClose }) => {
 
   const handleCancelLogout = () => {
     setShowLogoutConfirm(false);
+  };
+
+  const handleSaveDisplayName = () => {
+    if (!displayName || displayName.trim() === '') {
+      alert('Display name cannot be empty');
+      return;
+    }
+    setShowNameConfirm(true);
+  };
+
+  const handleConfirmNameChange = async () => {
+    setUpdatingName(true);
+    try {
+      const result = await updateUserProfile(displayName);
+      if (result.success) {
+        // Refresh user data
+        const updatedUser = getCurrentUser();
+        setUser(updatedUser);
+        setShowNameConfirm(false);
+        alert('Display name updated successfully!');
+        // Trigger a page refresh to update Header display name
+        window.location.reload();
+      } else {
+        alert('Error updating display name: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error updating display name:', error);
+      alert('An error occurred while updating display name.');
+    } finally {
+      setUpdatingName(false);
+    }
+  };
+
+  const handleCancelNameChange = () => {
+    setShowNameConfirm(false);
+    // Reset to original display name
+    if (user?.displayName) {
+      setDisplayName(user.displayName);
+    } else if (user?.email) {
+      setDisplayName(user.email.split('@')[0]);
+    }
   };
 
   const getUserDisplayName = () => {
@@ -90,12 +143,47 @@ const EditProfileModal = ({ isOpen, onClose }) => {
               <label className='block text-sm font-medium text-gray-300 mb-2'>
                 Display Name
               </label>
-              <input
-                type='text'
-                defaultValue={getUserDisplayName()}
-                className='w-full bg-[#2a2a2a] text-[#f5f5f5] px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                placeholder='Enter display name'
-              />
+              <div className='flex gap-2'>
+                <input
+                  type='text'
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className='flex-1 bg-[#2a2a2a] text-[#f5f5f5] px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                  placeholder='Enter display name'
+                  disabled={showNameConfirm || updatingName}
+                />
+                <button
+                  onClick={handleSaveDisplayName}
+                  disabled={showNameConfirm || updatingName || !displayName || displayName.trim() === '' || displayName === getUserDisplayName()}
+                  className='bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed'
+                >
+                  <FaSave />
+                  Save
+                </button>
+              </div>
+              {showNameConfirm && (
+                <div className='mt-3 p-3 bg-[#2a2a2a] border border-blue-500 rounded-lg'>
+                  <p className='text-gray-300 text-sm mb-3'>
+                    Are you sure you want to change your display name to <span className='font-semibold text-white'>"{displayName}"</span>?
+                  </p>
+                  <div className='flex gap-2'>
+                    <button
+                      onClick={handleConfirmNameChange}
+                      disabled={updatingName}
+                      className='flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed'
+                    >
+                      {updatingName ? 'Updating...' : 'Confirm'}
+                    </button>
+                    <button
+                      onClick={handleCancelNameChange}
+                      disabled={updatingName}
+                      className='flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed'
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label className='block text-sm font-medium text-gray-300 mb-2'>

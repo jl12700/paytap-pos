@@ -73,8 +73,12 @@ const MenuContainer = () => {
     );
   }
 
+  // Filter to show only items where isAvailable === true (items marked as "Available for ordering")
+  // Also include items where isAvailable is undefined (for backward compatibility with existing items)
+  const filteredMenuItems = menuItems.filter(item => item.isAvailable === true || item.isAvailable === undefined);
+
   // No data state
-  if (!menuItems || menuItems.length === 0) {
+  if (!filteredMenuItems || filteredMenuItems.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-white text-xl">No menu items available. Add some items using the + button.</div>
@@ -89,7 +93,7 @@ const MenuContainer = () => {
       </div>
 
       <div className="grid grid-cols-4 gap-4 px-10 py-4 w-[100%]">
-        {menuItems.map((item) => {
+        {filteredMenuItems.map((item) => {
           return (
             <div
               key={item.id}

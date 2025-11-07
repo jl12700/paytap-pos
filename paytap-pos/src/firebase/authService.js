@@ -3,7 +3,8 @@ import {
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateProfile
 } from 'firebase/auth';
 import { auth } from './config';
 
@@ -82,6 +83,41 @@ export const sendPasswordReset = async (email) => {
       error: getAuthErrorMessage(error.code),
       errorCode: error.code,
       errorMessage: error.message
+    };
+  }
+};
+
+// Update user profile (display name)
+export const updateUserProfile = async (displayName) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      return {
+        success: false,
+        error: 'No user is currently signed in.'
+      };
+    }
+
+    if (!displayName || displayName.trim() === '') {
+      return {
+        success: false,
+        error: 'Display name cannot be empty.'
+      };
+    }
+
+    await updateProfile(user, {
+      displayName: displayName.trim()
+    });
+
+    return {
+      success: true,
+      message: 'Display name updated successfully.'
+    };
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to update display name.'
     };
   }
 };

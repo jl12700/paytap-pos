@@ -29,7 +29,10 @@ const Menu = () => {
           id: doc.id,
           ...doc.data(),
         }));
-        setMenuItems(items);
+        // Filter to show only items where isAvailable === true (items marked as "Available for ordering")
+        // Also include items where isAvailable is undefined (for backward compatibility with existing items)
+        const filteredItems = items.filter(item => item.isAvailable === true || item.isAvailable === undefined);
+        setMenuItems(filteredItems);
       } catch (error) {
         console.error("Error fetching menu items:", error);
       }

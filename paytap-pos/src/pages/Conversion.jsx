@@ -4,6 +4,8 @@ import { addConversion, getConversions } from '../firebase/conversionService';
 import { getVendorPoints } from '../firebase/vendors'; // ✅ Import to get real points
 import { auth } from '../firebase/config'; // ✅ Import Firebase auth
 import { onAuthStateChanged } from 'firebase/auth'; // ✅ Import auth listener
+import { getCurrentUser } from '../firebase/authService';
+import { initializeVendor, subtractPoints } from '../firebase/pointsService';
 
 const Conversion = ({ show, onClose }) => {
   if (!show) return null;
@@ -29,6 +31,8 @@ const Conversion = ({ show, onClose }) => {
   const [recentConversions, setRecentConversions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingPoints, setLoadingPoints] = useState(true); // ✅ Loading state for points
+  const [gcashError, setGcashError] = useState(''); // ✅ GCash validation error
+  const [amountError, setAmountError] = useState(''); // ✅ Amount validation error
 
   const paymentMethods = [
     { id: 'paytap', name: 'PayTap', icon: FaQrcode, color: 'bg-blue-500' },
@@ -80,18 +84,111 @@ const Conversion = ({ show, onClose }) => {
     return () => unsubscribe();
   }, []);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  // ✅ Validate GCash number format
+  const validateGCashNumber = (number) => {
+    // Remove any non-digit characters
+    const digitsOnly = number.replace(/\D/g, '');
+    
+    // Check if it's exactly 11 digits
+    if (digitsOnly.length > 11) {
+      return { isValid: false, error: 'GCash number must be exactly 11 digits' };
+    }
+    
+    // Check if it starts with 09
+    if (digitsOnly.length > 0 && !digitsOnly.startsWith('09')) {
+      return { isValid: false, error: 'GCash number must start with 09' };
+    }
+    
+    // Check if it's exactly 11 digits when complete
+    if (digitsOnly.length === 11) {
+      if (!/^09\d{9}$/.test(digitsOnly)) {
+        return { isValid: false, error: 'Invalid GCash number format' };
+      }
+      return { isValid: true, error: '' };
+    }
+    
+    return { isValid: digitsOnly.length === 0, error: '' };
   };
 
-  // Fetch user points when modal opens
+  // ✅ Validate amount
+  const validateAmount = (amount, availablePoints) => {
+    if (!amount || amount === '') {
+      return { isValid: false, error: '' };
+    }
+    
+    const numAmount = parseFloat(amount);
+    
+    if (isNaN(numAmount)) {
+      return { isValid: false, error: 'Amount must be a valid number' };
+    }
+    
+    if (numAmount < 1) {
+      return { isValid: false, error: 'Amount must be at least 1 point' };
+    }
+    
+    if (numAmount > availablePoints) {
+      return { isValid: false, error: `Amount cannot exceed available points (${availablePoints})` };
+    }
+    
+    if (numAmount % 1 !== 0) {
+      return { isValid: false, error: 'Amount must be a whole number' };
+    }
+    
+    return { isValid: true, error: '' };
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Special handling for GCash number
+    if (name === 'cardNumber' && formData.paymentMethod === 'paytap') {
+      // Only allow digits and limit to 11 characters
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
+      const validation = validateGCashNumber(digitsOnly);
+      
+      setFormData(prev => ({ ...prev, [name]: digitsOnly }));
+      setGcashError(validation.error);
+    } else if (name === 'amount') {
+      // Only allow positive numbers
+      const numericValue = value.replace(/[^0-9.]/g, '');
+      const validation = validateAmount(numericValue, conversionData.pointBalance);
+      
+      setFormData(prev => ({ ...prev, [name]: numericValue }));
+      setAmountError(validation.error);
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // Fetch user points when modal opens and set date to today
   useEffect(() => {
     if (show) {
+      // Always set date to today when modal opens
+      setFormData(prev => ({
+        ...prev,
+        date: new Date().toISOString().split('T')[0]
+      }));
+      setGcashError(''); // Clear GCash error when modal opens
+      setAmountError(''); // Clear amount error when modal opens
       loadUserPoints();
       loadRecentConversions();
     }
   }, [show]);
+
+  // Re-validate amount when point balance changes
+  useEffect(() => {
+    if (formData.amount) {
+      const validation = validateAmount(formData.amount, conversionData.pointBalance);
+      setAmountError(validation.error);
+    }
+  }, [conversionData.pointBalance]);
+
+  // Clear GCash error when payment method changes
+  useEffect(() => {
+    if (formData.paymentMethod !== 'paytap') {
+      setGcashError('');
+    }
+  }, [formData.paymentMethod]);
 
   const loadUserPoints = async () => {
     try {
@@ -151,8 +248,20 @@ const Conversion = ({ show, onClose }) => {
     }
 
     const amount = parseFloat(conversionData.conversionAmount);
-    if (amount <= 0) {
-      alert('Amount must be greater than 0');
+    
+    // Validate amount
+    if (isNaN(amount)) {
+      alert('Please enter a valid number');
+      return;
+    }
+    
+    if (amount < 1) {
+      alert('Amount must be at least 1 point');
+      return;
+    }
+    
+    if (amount % 1 !== 0) {
+      alert('Amount must be a whole number');
       return;
     }
 
@@ -161,10 +270,26 @@ const Conversion = ({ show, onClose }) => {
       alert(`Insufficient points! You have ${conversionData.pointBalance} points but trying to convert ${amount} points.`);
       return;
     }
-
-    if (formData.paymentMethod === 'paytap' && !formData.cardNumber) {
-      alert('PayTap number is required');
+    
+    // Check for validation errors
+    const validation = validateAmount(conversionData.conversionAmount, conversionData.pointBalance);
+    if (!validation.isValid) {
+      alert(validation.error || 'Please enter a valid amount');
       return;
+    }
+
+    if (formData.paymentMethod === 'paytap') {
+      if (!formData.cardNumber) {
+        alert('GCash number is required');
+        return;
+      }
+      
+      // Validate GCash number format
+      const validation = validateGCashNumber(formData.cardNumber);
+      if (!validation.isValid) {
+        alert(validation.error || 'Please enter a valid GCash number (11 digits starting with 09)');
+        return;
+      }
     }
 
     setLoading(true);
@@ -234,20 +359,53 @@ const Conversion = ({ show, onClose }) => {
       return;
     }
 
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      alert('Please enter a valid amount greater than 0');
+    if (!formData.amount || formData.amount === '') {
+      alert('Please enter an amount');
       return;
     }
 
     const amount = parseFloat(formData.amount);
+    
+    // Validate amount
+    if (isNaN(amount)) {
+      alert('Please enter a valid number');
+      return;
+    }
+    
+    if (amount < 1) {
+      alert('Amount must be at least 1 point');
+      return;
+    }
+    
+    if (amount % 1 !== 0) {
+      alert('Amount must be a whole number');
+      return;
+    }
+    
     if (amount > conversionData.pointBalance) {
       alert(`Insufficient points! You have ${conversionData.pointBalance} points.`);
       return;
     }
-
-    if (formData.paymentMethod === 'paytap' && !formData.cardNumber) {
-      alert('Please enter GCash number');
+    
+    // Check for validation errors
+    const validation = validateAmount(formData.amount, conversionData.pointBalance);
+    if (!validation.isValid) {
+      alert(validation.error || 'Please enter a valid amount');
       return;
+    }
+
+    if (formData.paymentMethod === 'paytap') {
+      if (!formData.cardNumber) {
+        alert('Please enter GCash number');
+        return;
+      }
+      
+      // Validate GCash number format
+      const validation = validateGCashNumber(formData.cardNumber);
+      if (!validation.isValid) {
+        alert(validation.error || 'Please enter a valid GCash number (11 digits starting with 09)');
+        return;
+      }
     }
 
     setConversionData(prev => ({
@@ -319,8 +477,9 @@ const Conversion = ({ show, onClose }) => {
               type="date"
               name="date"
               value={formData.date}
-              onChange={handleInputChange}
-              className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white"
+              readOnly
+              disabled
+              className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white cursor-not-allowed opacity-70"
             />
           </div>
 
@@ -367,9 +526,20 @@ const Conversion = ({ show, onClose }) => {
                 value={formData.cardNumber}
                 onChange={handleInputChange}
                 placeholder="Enter GCash number"
-                className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white"
+                maxLength={11}
+                className={`w-full p-3 bg-[#2a2a2a] border rounded-lg text-white ${
+                  gcashError ? 'border-red-500' : 'border-gray-600'
+                }`}
                 required
               />
+              {gcashError && (
+                <p className="text-red-400 text-xs mt-1">{gcashError}</p>
+              )}
+              {!gcashError && formData.cardNumber && (
+                <p className="text-gray-400 text-xs mt-1">
+                  Format: 09XXXXXXXXX (11 digits)
+                </p>
+              )}
             </div>
           )}
 
@@ -377,23 +547,30 @@ const Conversion = ({ show, onClose }) => {
             <label className="block text-sm font-medium text-gray-300 mb-2">Amount (Points) *</label>
             <div className="relative">
               <input
-                type="number"
+                type="text"
                 name="amount"
                 value={formData.amount}
                 onChange={handleInputChange}
-                placeholder="0"
-                step="1"
-                min="1"
-                max={conversionData.pointBalance}
-                className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-lg text-white"
+                placeholder="Enter amount (min: 1)"
+                className={`w-full p-3 bg-[#2a2a2a] border rounded-lg text-white ${
+                  amountError ? 'border-red-500' : 'border-gray-600'
+                }`}
                 required
               />
               <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm">
                 pts
               </span>
             </div>
+            {amountError && (
+              <p className="text-red-400 text-xs mt-1">{amountError}</p>
+            )}
+            {!amountError && formData.amount && (
+              <p className="text-green-400 text-xs mt-1">
+                ✓ Valid amount
+              </p>
+            )}
             <p className="text-xs text-gray-400 mt-1">
-              Available: {conversionData.pointBalance} points
+              Available: {conversionData.pointBalance} points | Minimum: 1 point
             </p>
           </div>
 
