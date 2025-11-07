@@ -1,3 +1,4 @@
+// src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Auth from "./pages/Auth";
@@ -7,6 +8,7 @@ import ContactSupport from "./pages/ContactSupport";
 import Header from "./components/shared/Header";
 import Menu from "./pages/Menu";
 import ProtectedRoute from "./components/ProtectedRoute";
+import WebSocketStatus from "./hooks/WebSocketStatus";
 
 // Layout component for protected routes
 const ProtectedLayout = ({ children }) => {
@@ -22,6 +24,9 @@ function App() {
   return (
     <>
       <Router>
+        {/* WebSocket Status - Shows in all protected routes */}
+        <WebSocketStatus /> {/* ← ADD THIS */}
+        
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -72,4 +77,4 @@ function App() {
   );
 }
 
-export default App
+export default App;

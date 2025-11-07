@@ -1,48 +1,227 @@
+// src/components/CheckoutModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { FaQrcode, FaWallet, FaArrowLeft, FaCheckCircle, FaSync } from 'react-icons/fa';
+import { FaQrcode, FaWallet, FaArrowLeft, FaCheckCircle, FaSync, FaTimes } from 'react-icons/fa';
+import { supabase } from '../supabase/supabaseClient';
 
-const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, totalAmount, onPaymentSuccess }) => {
+const CheckoutModal = ({ 
+  isOpen, 
+  onClose, 
+  orderNumber, 
+  receipt, 
+  paymentMethod, 
+  totalAmount, 
+  onPaymentSuccess
+}) => {
   const [cashAmount, setCashAmount] = useState('');
   const [cashError, setCashError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPaymentSuccessful, setIsPaymentSuccessful] = useState(false);
   const [isWaitingForRFID, setIsWaitingForRFID] = useState(false);
-  const hasStartedGCashFlow = useRef(false);
+  const [rfidError, setRfidError] = useState('');
+  const [cardInfo, setCardInfo] = useState(null);
+  
+  const hasStartedPayTapFlow = useRef(false);
+  const lastScannedCardRef = useRef(null);
 
-  useEffect(() => {
-    if (paymentMethod === 'gcash' && isOpen && !hasStartedGCashFlow.current) {
-      hasStartedGCashFlow.current = true;
-      setIsWaitingForRFID(true);
-      // Simulate RFID tap after 3 seconds
-      const timer = setTimeout(() => {
-        setIsWaitingForRFID(false);
-        setIsProcessing(true);
-        // Simulate payment processing
-        setTimeout(() => {
-          setIsPaymentSuccessful(true);
-          setTimeout(() => {
-            onPaymentSuccess(totalAmount);
-            onClose();
-          }, 2000);
-        }, 1500);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentMethod, isOpen]);
-
+  // Reset states when modal closes
   useEffect(() => {
     if (!isOpen) {
-      // Reset states when modal closes
-      setCashAmount('');
-      setCashError('');
-      setIsProcessing(false);
-      setIsPaymentSuccessful(false);
-      setIsWaitingForRFID(false);
-      hasStartedGCashFlow.current = false;
+      resetModalState();
     }
   }, [isOpen]);
 
+  // Start PayTap flow when modal opens
+  useEffect(() => {
+    const isPayTap = paymentMethod === 'gcash' || paymentMethod === 'paytap';
+    
+    if (isPayTap && isOpen && !hasStartedPayTapFlow.current) {
+      hasStartedPayTapFlow.current = true;
+      setIsWaitingForRFID(true);
+      
+      // Listen for RFID scan event (from Vite WebSocket)
+      window.addEventListener('rfid-card-scanned', handleRFIDScanned);
+    }
+
+    return () => {
+      window.removeEventListener('rfid-card-scanned', handleRFIDScanned);
+    };
+  }, [paymentMethod, isOpen]);
+
+  const resetModalState = () => {
+    setCashAmount('');
+    setCashError('');
+    setIsProcessing(false);
+    setIsPaymentSuccessful(false);
+    setIsWaitingForRFID(false);
+    setRfidError('');
+    setCardInfo(null);
+    hasStartedPayTapFlow.current = false;
+    lastScannedCardRef.current = null;
+  };
+
+  // Handle RFID card scan
+  const handleRFIDScanned = async (event) => {
+    const rfidUid = event.detail?.uid || event.detail;
+    
+    if (!rfidUid) {
+      console.error('No RFID UID provided');
+      return;
+    }
+
+    // Prevent duplicate processing
+    if (rfidUid === lastScannedCardRef.current) {
+      console.log('Card already processed, ignoring duplicate scan');
+      return;
+    }
+
+    if (isProcessing || isPaymentSuccessful) {
+      console.log('Payment already in progress');
+      return;
+    }
+
+    lastScannedCardRef.current = rfidUid;
+    await processPayTapPayment(rfidUid);
+  };
+
+  // Process PayTap payment with RFID (Direct Supabase)
+  const processPayTapPayment = async (rfidUid) => {
+    setIsWaitingForRFID(false);
+    setIsProcessing(true);
+    setRfidError('');
+
+    try {
+      console.log('🔍 Processing payment for RFID:', rfidUid);
+
+      // Step 1: Search for card in Supabase
+      const { data: card, error: searchError } = await supabase
+        .from('rfid_cards')
+        .select('*')
+        .eq('rfid_uid', rfidUid.toUpperCase())
+        .single();
+
+      if (searchError || !card) {
+        throw new Error('Card not found in database');
+      }
+
+      console.log('✅ Card found:', card);
+
+      // Step 2: Validate card status
+      if (card.status !== 'active') {
+        throw new Error('Card is inactive. Please contact admin.');
+      }
+
+      // Step 3: Check balance
+      if (card.balance < totalAmount) {
+        throw new Error(
+          `Insufficient balance! Current: ₱${card.balance.toFixed(2)}, Required: ₱${totalAmount.toFixed(2)}`
+        );
+      }
+
+      // Step 4: Calculate new balance
+      const oldBalance = card.balance;
+      const newBalance = oldBalance - totalAmount;
+
+      // Step 5: Update balance in Supabase
+      const { data: updatedCard, error: updateError } = await supabase
+        .from('rfid_cards')
+        .update({
+          balance: newBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('rfid_uid', rfidUid.toUpperCase())
+        .select()
+        .single();
+
+      if (updateError) {
+        throw new Error('Failed to update balance');
+      }
+
+      console.log('✅ Balance updated:', updatedCard);
+
+      // Step 6: Log transaction
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert([{
+          rfid_uid: rfidUid.toUpperCase(),
+          firebase_uid: card.firebase_uid,
+          amount: totalAmount,
+          type: 'debit',
+          old_balance: oldBalance,
+          new_balance: newBalance,
+          reason: `Order #${orderNumber} - ${receipt.length} items`,
+          created_at: new Date().toISOString()
+        }]);
+
+      if (transactionError) {
+        console.warn('Transaction logging failed:', transactionError);
+        // Don't throw error - payment succeeded even if logging failed
+      }
+
+      // Step 7: Update UI with success
+      setCardInfo({
+        rfid_uid: rfidUid,
+        name: card.name,
+        balance: newBalance,
+        previous_balance: oldBalance
+      });
+
+      // Show processing animation
+      setTimeout(() => {
+        setIsProcessing(false);
+        setIsPaymentSuccessful(true);
+
+        // Send success response to ESP32 via WebSocket
+        if (window.viteWebSocket) {
+          window.viteWebSocket.send(JSON.stringify({
+            type: 'payment_success',
+            rfid_uid: rfidUid,
+            amount: totalAmount,
+            new_balance: newBalance
+          }));
+        }
+
+        // Auto-close after success
+        setTimeout(() => {
+          onPaymentSuccess(totalAmount);
+          onClose();
+        }, 2500);
+      }, 1500);
+
+    } catch (error) {
+      console.error('❌ Payment error:', error);
+      setIsProcessing(false);
+      setRfidError(error.message || 'Payment failed. Please try again.');
+
+      // Send failure response to ESP32
+      if (window.viteWebSocket) {
+        window.viteWebSocket.send(JSON.stringify({
+          type: 'payment_failed',
+          rfid_uid: rfidUid,
+          reason: error.message
+        }));
+      }
+      
+      // Reset waiting state after error
+      setTimeout(() => {
+        setIsWaitingForRFID(true);
+        setRfidError('');
+        lastScannedCardRef.current = null;
+      }, 3000);
+    }
+  };
+
+  // Simulate RFID tap for testing (DEV ONLY)
+  const simulateRFIDTap = () => {
+    const testRfidUid = 'A1B2C3D4'; // ⚠️ UPDATE WITH REAL UID FROM YOUR DATABASE
+    
+    const event = new CustomEvent('rfid-card-scanned', {
+      detail: { uid: testRfidUid }
+    });
+    
+    window.dispatchEvent(event);
+  };
+
+  // Handle cash payment
   const handleCashAmountChange = (e) => {
     const value = e.target.value;
     setCashAmount(value);
@@ -68,13 +247,8 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
       return;
     }
 
-    if (amount < 0) {
-      setCashError('Amount cannot be negative');
-      return;
-    }
-
     setIsProcessing(true);
-    // Simulate payment processing
+    
     setTimeout(() => {
       setIsPaymentSuccessful(true);
       setTimeout(() => {
@@ -84,54 +258,61 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
     }, 1500);
   };
 
-
   if (!isOpen) return null;
 
+  const isPayTap = paymentMethod === 'gcash' || paymentMethod === 'paytap';
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-      <div className="bg-[#1f1f1f] rounded-2xl shadow-lg w-full max-w-2xl mx-4 overflow-y-auto max-h-[90vh] relative p-6">
-        {/* Back Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 left-4 text-gray-400 hover:text-white text-xl flex items-center gap-2"
-        >
-          <FaArrowLeft className="inline" />
-          <span className="text-sm">Back</span>
-        </button>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-[#1f1f1f] rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-[#2a2a2a]">
+        {/* Header */}
+        <div className="bg-[#2a2a2a] p-6 relative border-b border-[#3a3a3a]">
+          <button
+            onClick={onClose}
+            className="absolute top-4 left-4 text-gray-400 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <FaArrowLeft className="text-lg" />
+            <span className="text-sm font-medium">Back</span>
+          </button>
+          
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+          >
+            <FaTimes className="text-xl" />
+          </button>
+          
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-[#f5f5f5]">Checkout</h2>
+            <p className="text-gray-400 text-sm mt-1">Complete your transaction</p>
+          </div>
+        </div>
 
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-4 text-gray-400 hover:text-white text-2xl"
-        >
-          ×
-        </button>
-
-        <div className="mt-8">
-          <h2 className="text-2xl font-bold text-white mb-6">Checkout</h2>
-
+        <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
           {/* Order Number */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-300 mb-2">Order Number</label>
-            <div className="bg-[#2a2a2a] rounded-lg p-3">
-              <p className="text-white font-semibold">{orderNumber}</p>
+            <div className="bg-[#2a2a2a] rounded-lg p-3 border border-[#3a3a3a]">
+              <p className="text-white font-semibold tracking-wide">{orderNumber}</p>
             </div>
           </div>
 
           {/* Receipt */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">Receipt</label>
-            <div className="bg-[#2a2a2a] rounded-lg p-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">Order Summary</label>
+            <div className="bg-[#2a2a2a] rounded-lg p-4 border border-[#3a3a3a]">
               <div className="space-y-2">
                 {receipt.map((item, index) => (
                   <div key={index} className="flex justify-between text-white">
-                    <span>{item.name} × {item.qty}</span>
-                    <span>₱{item.subtotal.toFixed(2)}</span>
+                    <span className="text-[#f5f5f5]">
+                      {item.name} <span className="text-gray-400">× {item.qty}</span>
+                    </span>
+                    <span className="font-semibold">₱{item.subtotal.toFixed(2)}</span>
                   </div>
                 ))}
                 <div className="border-t border-gray-600 pt-2 mt-2 flex justify-between">
                   <span className="text-white font-semibold">Total</span>
-                  <span className="text-white font-bold text-lg">₱{totalAmount.toFixed(2)}</span>
+                  <span className="text-yellow-400 font-bold text-xl">₱{totalAmount.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -140,8 +321,8 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
           {/* Payment Method */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-300 mb-2">Payment Method</label>
-            <div className="bg-[#2a2a2a] rounded-lg p-3 flex items-center gap-3">
-              {paymentMethod === 'gcash' ? (
+            <div className="bg-[#2a2a2a] rounded-lg p-3 flex items-center gap-3 border border-[#3a3a3a]">
+              {isPayTap ? (
                 <>
                   <FaQrcode className="text-blue-400 text-xl" />
                   <span className="text-white font-semibold">PayTap</span>
@@ -155,38 +336,95 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
             </div>
           </div>
 
-          {/* GCash Flow */}
-          {paymentMethod === 'gcash' && (
+          {/* PayTap Flow */}
+          {isPayTap && (
             <div className="mb-6">
-              {isWaitingForRFID && !isProcessing && !isPaymentSuccessful && (
-                <div className="bg-blue-500/20 rounded-lg p-6 text-center">
+              {/* Waiting for RFID */}
+              {isWaitingForRFID && !isProcessing && !isPaymentSuccessful && !rfidError && (
+                <div className="bg-blue-500/10 rounded-lg p-6 text-center border border-blue-500/30">
                   <FaSync className="animate-spin text-blue-400 text-4xl mx-auto mb-4" />
                   <p className="text-blue-400 font-semibold text-lg mb-2">
-                    Waiting for PayTap transaction
+                    Waiting for card tap
                   </p>
-                  <p className="text-gray-300 text-sm">
-                    Please tap your RFID card
+                  <p className="text-gray-300 text-sm mb-1">
+                    Please tap your RFID card on the scanner
                   </p>
+                  <p className="text-gray-500 text-xs mb-4">
+                    Amount to deduct: ₱{totalAmount.toFixed(2)}
+                  </p>
+                  
+                  {/* Test button (DEV ONLY) */}
+                  {import.meta.env.DEV && (
+                    <button
+                      onClick={simulateRFIDTap}
+                      className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition"
+                    >
+                      🧪 Test RFID Tap
+                    </button>
+                  )}
                 </div>
               )}
 
+              {/* Processing Payment */}
               {isProcessing && !isPaymentSuccessful && (
-                <div className="bg-blue-500/20 rounded-lg p-6 text-center">
+                <div className="bg-blue-500/10 rounded-lg p-6 text-center border border-blue-500/30">
                   <FaSync className="animate-spin text-blue-400 text-4xl mx-auto mb-4" />
-                  <p className="text-blue-400 font-semibold text-lg">
+                  <p className="text-blue-400 font-semibold text-lg mb-2">
                     Processing payment...
                   </p>
+                  <p className="text-gray-300 text-sm">
+                    ₱{totalAmount.toFixed(2)} being deducted
+                  </p>
+                  {cardInfo && (
+                    <p className="text-gray-500 text-xs mt-2">
+                      Card: {cardInfo.name}
+                    </p>
+                  )}
                 </div>
               )}
 
+              {/* Payment Successful */}
               {isPaymentSuccessful && (
-                <div className="bg-green-500/20 rounded-lg p-6 text-center">
+                <div className="bg-green-500/10 rounded-lg p-6 text-center border border-green-500/30">
                   <FaCheckCircle className="text-green-400 text-4xl mx-auto mb-4" />
-                  <p className="text-green-400 font-semibold text-lg">
+                  <p className="text-green-400 font-semibold text-lg mb-2">
                     Payment Successful!
                   </p>
-                  <p className="text-gray-300 text-sm mt-2">
-                    Points updated successfully
+                  <p className="text-gray-300 text-sm mb-3">
+                    Transaction completed
+                  </p>
+                  {cardInfo && (
+                    <div className="bg-[#2a2a2a] rounded-lg p-3 text-sm border border-[#3a3a3a]">
+                      <div className="flex justify-between text-gray-400 mb-1">
+                        <span>Card Owner:</span>
+                        <span className="text-white">{cardInfo.name}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-400 mb-1">
+                        <span>Previous Balance:</span>
+                        <span>₱{cardInfo.previous_balance?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-400 mb-1">
+                        <span>Amount Deducted:</span>
+                        <span className="text-red-400">-₱{totalAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-gray-700 pt-2 mt-2 flex justify-between font-semibold">
+                        <span className="text-white">New Balance:</span>
+                        <span className="text-green-400">₱{cardInfo.balance?.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Payment Error */}
+              {rfidError && !isWaitingForRFID && (
+                <div className="bg-red-500/10 rounded-lg p-6 text-center border border-red-500/30">
+                  <FaTimes className="text-red-400 text-4xl mx-auto mb-4" />
+                  <p className="text-red-400 font-semibold text-lg mb-2">
+                    Payment Failed
+                  </p>
+                  <p className="text-gray-300 text-sm">
+                    {rfidError}
                   </p>
                 </div>
               )}
@@ -200,7 +438,7 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
                 Amount Received (₱)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">₱</span>
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 font-semibold">₱</span>
                 <input
                   type="number"
                   value={cashAmount}
@@ -208,8 +446,8 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
                   placeholder="0.00"
                   step="0.01"
                   min="0"
-                  className={`w-full p-3 pl-8 bg-[#2a2a2a] border rounded-lg text-white ${
-                    cashError ? 'border-red-500' : 'border-gray-600'
+                  className={`w-full p-3 pl-8 bg-[#2a2a2a] border rounded-lg text-white focus:outline-none focus:border-green-500 transition-colors ${
+                    cashError ? 'border-red-500' : 'border-[#3a3a3a]'
                   }`}
                   disabled={isProcessing || isPaymentSuccessful}
                 />
@@ -218,7 +456,7 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
                 <p className="text-red-400 text-sm mt-2">{cashError}</p>
               )}
               {cashAmount && !cashError && parseFloat(cashAmount) > totalAmount && (
-                <p className="text-green-400 text-sm mt-2">
+                <p className="text-green-400 text-sm mt-2 font-semibold">
                   Change: ₱{(parseFloat(cashAmount) - totalAmount).toFixed(2)}
                 </p>
               )}
@@ -238,7 +476,7 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
               )}
 
               {isPaymentSuccessful && (
-                <div className="bg-green-500/20 rounded-lg p-6 text-center mt-4">
+                <div className="bg-green-500/10 rounded-lg p-6 text-center mt-4 border border-green-500/30">
                   <FaCheckCircle className="text-green-400 text-4xl mx-auto mb-4" />
                   <p className="text-green-400 font-semibold text-lg">
                     Payment Successful!
@@ -254,4 +492,3 @@ const CheckoutModal = ({ isOpen, onClose, orderNumber, receipt, paymentMethod, t
 };
 
 export default CheckoutModal;
-
