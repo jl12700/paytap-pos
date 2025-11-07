@@ -92,14 +92,22 @@ const CheckoutModal = ({
     try {
       console.log('🔍 Processing payment for RFID:', rfidUid);
 
+      // Normalize RFID UID (uppercase, trim whitespace)
+      const normalizedUid = rfidUid.trim().toUpperCase();
+
       // Step 1: Search for card in Supabase
       const { data: card, error: searchError } = await supabase
         .from('rfid_cards')
         .select('*')
-        .eq('rfid_uid', rfidUid.toUpperCase())
+        .eq('rfid_uid', normalizedUid)
         .single();
 
-      if (searchError || !card) {
+      if (searchError) {
+        console.error('❌ Card search error:', searchError);
+        throw new Error('Card not found in database');
+      }
+
+      if (!card) {
         throw new Error('Card not found in database');
       }
 
@@ -118,51 +126,78 @@ const CheckoutModal = ({
       }
 
       // Step 4: Calculate new balance
-      const oldBalance = card.balance;
+      const oldBalance = parseFloat(card.balance);
       const newBalance = oldBalance - totalAmount;
 
-      // Step 5: Update balance in Supabase
+      console.log('💰 Balance calculation:', {
+        old: oldBalance,
+        deduct: totalAmount,
+        new: newBalance
+      });
+
+      // Step 5: Update balance in Supabase (with error details)
       const { data: updatedCard, error: updateError } = await supabase
         .from('rfid_cards')
         .update({
-          balance: newBalance,
-          updated_at: new Date().toISOString()
+          balance: newBalance
+          // Note: Don't update 'updated_at' if it's auto-managed by Supabase
         })
-        .eq('rfid_uid', rfidUid.toUpperCase())
+        .eq('rfid_uid', normalizedUid)
         .select()
         .single();
 
       if (updateError) {
-        throw new Error('Failed to update balance');
+        console.error('❌ Balance update error:', updateError);
+        console.error('   Error details:', {
+          message: updateError.message,
+          code: updateError.code,
+          details: updateError.details,
+          hint: updateError.hint
+        });
+        
+        // Provide more specific error messages
+        if (updateError.code === '42501') {
+          throw new Error('Database permission error. Please check RLS policies.');
+        } else if (updateError.code === '23505') {
+          throw new Error('Duplicate entry error');
+        } else {
+          throw new Error(`Failed to update balance: ${updateError.message}`);
+        }
       }
 
-      console.log('✅ Balance updated:', updatedCard);
+      if (!updatedCard) {
+        throw new Error('Balance update returned no data');
+      }
+
+      console.log('✅ Balance updated successfully:', updatedCard);
 
       // Step 6: Log transaction
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert([{
-          rfid_uid: rfidUid.toUpperCase(),
+          rfid_uid: normalizedUid,
           firebase_uid: card.firebase_uid,
           amount: totalAmount,
           type: 'debit',
           old_balance: oldBalance,
           new_balance: newBalance,
-          reason: `Order #${orderNumber} - ${receipt.length} items`,
-          created_at: new Date().toISOString()
+          reason: `Order #${orderNumber} - ${receipt.length} items`
         }]);
 
       if (transactionError) {
-        console.warn('Transaction logging failed:', transactionError);
+        console.warn('⚠️ Transaction logging failed:', transactionError);
         // Don't throw error - payment succeeded even if logging failed
+      } else {
+        console.log('✅ Transaction logged successfully');
       }
 
       // Step 7: Update UI with success
       setCardInfo({
-        rfid_uid: rfidUid,
+        rfid_uid: normalizedUid,
         name: card.name,
         balance: newBalance,
-        previous_balance: oldBalance
+        previous_balance: oldBalance,
+        firebase_uid: card.firebase_uid
       });
 
       // Show processing animation
@@ -174,7 +209,7 @@ const CheckoutModal = ({
         if (window.viteWebSocket) {
           window.viteWebSocket.send(JSON.stringify({
             type: 'payment_success',
-            rfid_uid: rfidUid,
+            rfid_uid: normalizedUid,
             amount: totalAmount,
             new_balance: newBalance
           }));
@@ -182,7 +217,7 @@ const CheckoutModal = ({
 
         // Auto-close after success
         setTimeout(() => {
-          onPaymentSuccess(totalAmount);
+          onPaymentSuccess(totalAmount, card.firebase_uid, card.name);
           onClose();
         }, 2500);
       }, 1500);
@@ -212,7 +247,8 @@ const CheckoutModal = ({
 
   // Simulate RFID tap for testing (DEV ONLY)
   const simulateRFIDTap = () => {
-    const testRfidUid = 'A1B2C3D4'; // ⚠️ UPDATE WITH REAL UID FROM YOUR DATABASE
+    // ⚠️ UPDATE WITH REAL UID FROM YOUR DATABASE
+    const testRfidUid = 'A1B2C3D4';
     
     const event = new CustomEvent('rfid-card-scanned', {
       detail: { uid: testRfidUid }
@@ -252,7 +288,7 @@ const CheckoutModal = ({
     setTimeout(() => {
       setIsPaymentSuccessful(true);
       setTimeout(() => {
-        onPaymentSuccess(totalAmount);
+        onPaymentSuccess(totalAmount, null, null);
         onClose();
       }, 2000);
     }, 1500);

@@ -68,15 +68,19 @@ const Menu = () => {
     setShowCheckoutModal(true);
   };
 
-  const handlePaymentSuccess = async (amount) => {
+  // ✅ CRITICAL FIX: Updated to receive customerId and customerName from CheckoutModal
+  const handlePaymentSuccess = async (amount, customerId = null, customerName = null) => {
     try {
       // Convert 'gcash' to 'paytap' for database consistency
       const normalizedPaymentMethod = paymentMethod === 'gcash' ? 'paytap' : paymentMethod;
       
+      // Determine customer name (fallback to Redux if not provided)
+      const finalCustomerName = customerName || customerData?.customerName || "Unknown";
+      
       // Save order to Firebase
       await addDoc(collection(db, "orders"), {
-        customerName: customerData?.customerName || "Unknown",
-        customerId: customerData?.customerId || null,
+        customerName: finalCustomerName,
+        customerId: customerId, // ✅ NOW SAVES FIREBASE_UID FROM RFID CARD
         orderId: orderNumber,
         items: cart.map(item => ({
           id: item.id,
@@ -97,7 +101,6 @@ const Menu = () => {
           const currentUser = getCurrentUser();
           if (currentUser) {
             // Add points equal to the order amount (1 peso = 1 point)
-            // You can adjust this conversion rate as needed
             const pointsToAdd = Math.floor(amount);
             await addPoints(currentUser.uid, pointsToAdd);
             console.log(`Added ${pointsToAdd} points to vendor account`);
