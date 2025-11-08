@@ -5,15 +5,16 @@ import OrderListItem from '../components/orders/OrderListItem'
 import BackButton from '../components/shared/BackButton'
 import SalesChart from '../components/SalesChart'
 import SalesChartModal from '../components/SalesChartModal'
-import { collection, getDocs, query, orderBy } from 'firebase/firestore'
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { db } from '../firebase/config'
+import { auth } from '../firebase/config'
 import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint } from 'react-icons/fa'
 
 const Orders = () => {
-    const [viewMode, setViewMode] = useState("cards"); // "cards" or "list"
-    const [sortBy, setSortBy] = useState("dateDesc"); // "dateDesc", "dateAsc", "amountDesc", "amountAsc"
-    const [activeTab, setActiveTab] = useState("orders"); // "orders" or "history"
-    const [historyPeriod, setHistoryPeriod] = useState("daily"); // "daily", "weekly", "monthly", "yearly"
+    const [viewMode, setViewMode] = useState("cards");
+    const [sortBy, setSortBy] = useState("dateDesc");
+    const [activeTab, setActiveTab] = useState("orders");
+    const [historyPeriod, setHistoryPeriod] = useState("daily");
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [salesHistory, setSalesHistory] = useState([]);
@@ -32,8 +33,28 @@ const Orders = () => {
     const fetchOrders = async () => {
         setLoading(true);
         try {
+            // ✅ Get current vendor
+            const currentVendor = auth.currentUser;
+            
+            if (!currentVendor) {
+                console.error('No vendor logged in');
+                setOrders([]);
+                setLoading(false);
+                return;
+            }
+
+            console.log('📍 Fetching orders for vendor:', currentVendor.uid);
+
             const ordersRef = collection(db, 'orders');
-            const querySnapshot = await getDocs(ordersRef);
+            
+            // ✅ Query with vendor filter
+            const q = query(
+                ordersRef,
+                where('vendorId', '==', currentVendor.uid),  // ✅ FILTER BY VENDOR
+                orderBy('createdAt', 'desc')
+            );
+
+            const querySnapshot = await getDocs(q);
 
             const ordersList = [];
             querySnapshot.forEach((doc) => {
@@ -43,17 +64,11 @@ const Orders = () => {
                 });
             });
 
-            // Sort by createdAt descending by default
-            ordersList.sort((a, b) => {
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-                return dateB - dateA;
-            });
-
+            console.log('📦 Total orders for this vendor:', ordersList.length);
             setOrders(ordersList);
             calculateStats(ordersList);
         } catch (error) {
-            console.error('Error fetching orders:', error);
+            console.error('Error fetching vendor orders:', error);
             setOrders([]);
         } finally {
             setLoading(false);
@@ -95,14 +110,12 @@ const Orders = () => {
             let periodLabel = '';
 
             if (historyPeriod === 'daily') {
-                // Daily: YYYY-MM-DD format, show day of month
                 const year = orderDate.getFullYear();
                 const month = orderDate.getMonth() + 1;
                 const day = orderDate.getDate();
                 periodKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 periodLabel = `${orderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
             } else if (historyPeriod === 'weekly') {
-                // Weekly: Year-Week format
                 const year = orderDate.getFullYear();
                 const week = getWeekNumber(orderDate);
                 periodKey = `${year}-W${String(week).padStart(2, '0')}`;
@@ -111,13 +124,11 @@ const Orders = () => {
                 weekEnd.setDate(weekEnd.getDate() + 6);
                 periodLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
             } else if (historyPeriod === 'monthly') {
-                // Monthly: YYYY-MM format
                 const year = orderDate.getFullYear();
                 const month = orderDate.getMonth() + 1;
                 periodKey = `${year}-${String(month).padStart(2, '0')}`;
                 periodLabel = orderDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             } else if (historyPeriod === 'yearly') {
-                // Yearly: YYYY format
                 const year = orderDate.getFullYear();
                 periodKey = `${year}`;
                 periodLabel = `${year}`;
@@ -160,7 +171,7 @@ const Orders = () => {
     const getWeekStart = (date) => {
         const d = new Date(date);
         const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         return new Date(d.setDate(diff));
     };
 
@@ -191,6 +202,10 @@ const Orders = () => {
             yearly: 'Yearly Sales'
         };
         const periodLabel = periodLabels[historyPeriod] || 'Sales History';
+
+        // Get vendor info
+        const currentVendor = auth.currentUser;
+        const vendorEmail = currentVendor?.email || 'N/A';
 
         // Create print-friendly HTML
         const printWindow = window.open('', '_blank');
@@ -293,6 +308,12 @@ const Orders = () => {
                         font-size: 12px;
                         color: #666;
                     }
+                    .vendor-info {
+                        text-align: center;
+                        margin-bottom: 10px;
+                        font-size: 12px;
+                        color: #666;
+                    }
                 </style>
             </head>
             <body>
@@ -300,6 +321,7 @@ const Orders = () => {
                 <div class="header">
                     <h1>Sales Tracking Report</h1>
                     <p>${periodLabel}</p>
+                    <div class="vendor-info">Vendor: ${vendorEmail}</div>
                 </div>
                 
                 <div class="stats">
@@ -353,7 +375,6 @@ const Orders = () => {
         `);
         printWindow.document.close();
         
-        // Wait for content to load, then print
         setTimeout(() => {
             printWindow.print();
         }, 250);

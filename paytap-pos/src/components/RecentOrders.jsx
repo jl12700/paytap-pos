@@ -4,6 +4,7 @@ import { collection, getDocs, query, where, Timestamp, orderBy } from 'firebase/
 import { db } from '../firebase/config';
 import RecentOrdersModal from './RecentOrdersModal';
 import ReceiptModal from './ReceiptModal';
+import { auth } from '../firebase/config';
 
 const RecentOrders = () => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -20,6 +21,18 @@ const RecentOrders = () => {
     const fetchTodayOrders = async () => {
         setLoading(true);
         try {
+            // ✅ Get current vendor
+            const currentVendor = auth.currentUser;
+            
+            if (!currentVendor) {
+                console.error('No vendor logged in');
+                setOrders([]);
+                setLoading(false);
+                return;
+            }
+
+            console.log('📍 Fetching orders for vendor:', currentVendor.uid);
+
             const now = new Date();
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             todayStart.setHours(0, 0, 0, 0);
@@ -29,19 +42,27 @@ const RecentOrders = () => {
 
             const ordersRef = collection(db, 'orders');
             
+            // ✅ Query with vendor filter
             let querySnapshot;
             try {
                 const q = query(
                     ordersRef,
+                    where('vendorId', '==', currentVendor.uid),  // ✅ FILTER BY VENDOR
                     where('createdAt', '>=', startTimestamp),
                     where('createdAt', '<=', endTimestamp),
                     orderBy('createdAt', 'desc')
                 );
                 querySnapshot = await getDocs(q);
+                console.log('✅ Orders fetched with vendor filter:', querySnapshot.size);
             } catch (error) {
-                console.warn('Query with filters failed, fetching all orders:', error);
-                const allOrders = await getDocs(ordersRef);
-                querySnapshot = allOrders;
+                console.warn('Query with filters failed, trying simpler query:', error);
+                // Fallback: fetch all vendor orders (without date filter)
+                const fallbackQuery = query(
+                    ordersRef,
+                    where('vendorId', '==', currentVendor.uid),
+                    orderBy('createdAt', 'desc')
+                );
+                querySnapshot = await getDocs(fallbackQuery);
             }
 
             const ordersList = [];
@@ -49,6 +70,7 @@ const RecentOrders = () => {
                 const data = doc.data();
                 const createdAt = data.createdAt;
                 
+                // If we had to use fallback query, filter by date manually
                 if (createdAt) {
                     const orderDate = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
                     if (orderDate >= todayStart && orderDate <= now) {
@@ -66,16 +88,10 @@ const RecentOrders = () => {
                 }
             });
 
-            // Sort by createdAt descending
-            ordersList.sort((a, b) => {
-                const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-                const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-                return dateB - dateA;
-            });
-
+            console.log('📦 Total orders for this vendor today:', ordersList.length);
             setOrders(ordersList);
         } catch (error) {
-            console.error('Error fetching today orders:', error);
+            console.error('Error fetching vendor orders:', error);
             setOrders([]);
         } finally {
             setLoading(false);
