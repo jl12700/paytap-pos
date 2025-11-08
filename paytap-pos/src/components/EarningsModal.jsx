@@ -6,6 +6,8 @@ import { db } from '../firebase/config';
 const EarningsModal = ({ isOpen, onClose }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('day'); // 'day', 'week', 'month', 'year'
   const [earnings, setEarnings] = useState(0);
+  const [paytapPoints, setPaytapPoints] = useState(0);
+  const [cashPHP, setCashPHP] = useState(0);
   const [orderCount, setOrderCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -69,11 +71,14 @@ const EarningsModal = ({ isOpen, onClose }) => {
       }
 
       let totalEarnings = 0;
+      let totalPaytapPoints = 0;
+      let totalCashPHP = 0;
       let count = 0;
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         const createdAt = data.createdAt;
+        const paymentMethod = data.paymentMethod || '';
         
         // Check if order is within date range
         if (createdAt) {
@@ -83,6 +88,13 @@ const EarningsModal = ({ isOpen, onClose }) => {
             if (data.status === 'Completed' || !data.status) {
               if (data.totalAmount) {
                 totalEarnings += data.totalAmount;
+                // Breakdown by payment method
+                if (paymentMethod === 'gcash') {
+                  // 1 peso = 1 point
+                  totalPaytapPoints += Math.floor(data.totalAmount);
+                } else if (paymentMethod === 'cash') {
+                  totalCashPHP += data.totalAmount;
+                }
                 count++;
               }
             }
@@ -91,16 +103,27 @@ const EarningsModal = ({ isOpen, onClose }) => {
           // If no createdAt, include it (fallback for old orders)
           if (data.totalAmount) {
             totalEarnings += data.totalAmount;
+            // Breakdown by payment method
+            if (paymentMethod === 'gcash') {
+              // 1 peso = 1 point
+              totalPaytapPoints += Math.floor(data.totalAmount);
+            } else if (paymentMethod === 'cash') {
+              totalCashPHP += data.totalAmount;
+            }
             count++;
           }
         }
       });
 
       setEarnings(totalEarnings);
+      setPaytapPoints(totalPaytapPoints);
+      setCashPHP(totalCashPHP);
       setOrderCount(count);
     } catch (error) {
       console.error('Error fetching earnings:', error);
       setEarnings(0);
+      setPaytapPoints(0);
+      setCashPHP(0);
       setOrderCount(0);
     } finally {
       setLoading(false);
@@ -187,6 +210,21 @@ const EarningsModal = ({ isOpen, onClose }) => {
               <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg p-6 border border-green-500/30">
                 <p className="text-gray-400 text-sm mb-2">Total Earnings</p>
                 <p className="text-4xl font-bold text-green-400">₱{earnings.toFixed(2)}</p>
+              </div>
+
+              {/* Breakdown */}
+              <div className="bg-[#2a2a2a] rounded-lg p-4 border border-gray-700">
+                <p className="text-gray-400 text-sm mb-3 font-medium">Breakdown</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-300 text-sm">Total Paytap:</span>
+                    <span className="text-yellow-400 font-semibold text-lg">{paytapPoints.toLocaleString()} Points</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-300 text-sm">Cash:</span>
+                    <span className="text-green-400 font-semibold text-lg">₱{cashPHP.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-[#2a2a2a] rounded-lg p-4">

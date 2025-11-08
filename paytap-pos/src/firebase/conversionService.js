@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc,
   addDoc, 
   updateDoc, 
   deleteDoc, 
@@ -10,6 +11,7 @@ import {
   where 
 } from 'firebase/firestore';
 import { db } from './config';
+import { subtractPoints } from './pointsService';
 
 // Collection reference for conversions
 const conversionsRef = collection(db, 'conversions');
@@ -46,6 +48,32 @@ export const addConversion = async (conversionData) => {
 export const updateConversion = async (conversionId, updateData) => {
   try {
     const conversionDoc = doc(db, 'conversions', conversionId);
+    
+    // Get the current conversion data to check status change
+    const currentConversion = await getDoc(conversionDoc);
+    const currentData = currentConversion.data();
+    
+    // Check if status is changing from 'pending' to 'Approved' or 'completed'
+    const isStatusChangingToApproved = 
+      currentData?.requestStatus === 'pending' && 
+      (updateData.requestStatus === 'Approved' || updateData.requestStatus === 'completed');
+    
+    // If status is changing to approved, deduct points
+    if (isStatusChangingToApproved && currentData?.vendorId && currentData?.conversionAmount) {
+      try {
+        const pointsToSubtract = Math.floor(currentData.conversionAmount);
+        if (pointsToSubtract > 0) {
+          await subtractPoints(currentData.vendorId, pointsToSubtract);
+          console.log(`✅ Deducted ${pointsToSubtract} points from vendor ${currentData.vendorId} upon approval`);
+        }
+      } catch (pointsError) {
+        console.error('Error deducting points upon approval:', pointsError);
+        // Don't fail the update if points deduction fails, but log it
+        // Admin should be notified if this happens
+      }
+    }
+    
+    // Update the conversion document
     await updateDoc(conversionDoc, {
       ...updateData,
       updatedAt: new Date()

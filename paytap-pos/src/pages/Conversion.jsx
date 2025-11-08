@@ -5,7 +5,7 @@ import { getVendorPoints } from '../firebase/vendors'; // ✅ Import to get real
 import { auth } from '../firebase/config'; // ✅ Import Firebase auth
 import { onAuthStateChanged } from 'firebase/auth'; // ✅ Import auth listener
 import { getCurrentUser } from '../firebase/authService';
-import { initializeVendor, subtractPoints } from '../firebase/pointsService';
+import { initializeVendor, getBusinessName } from '../firebase/pointsService';
 
 const Conversion = ({ show, onClose }) => {
   if (!show) return null;
@@ -13,7 +13,7 @@ const Conversion = ({ show, onClose }) => {
   const [currentUser, setCurrentUser] = useState(null); // ✅ Track current user
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    paymentMethod: 'paytap',
+    paymentMethod: 'gcash',
     cardNumber: '',
     amount: ''
   });
@@ -24,7 +24,7 @@ const Conversion = ({ show, onClose }) => {
     vendorName: '', // ✅ Will be filled with user email
     vendorId: '', // ✅ Will be filled with user ID
     pointBalance: 0, // ✅ Will be filled with actual points
-    chosenPaymentMethod: 'paytap',
+    chosenPaymentMethod: 'gcash',
     conversionAmount: ''
   });
 
@@ -35,7 +35,7 @@ const Conversion = ({ show, onClose }) => {
   const [amountError, setAmountError] = useState(''); // ✅ Amount validation error
 
   const paymentMethods = [
-    { id: 'paytap', name: 'PayTap', icon: FaQrcode, color: 'bg-blue-500' },
+    { id: 'gcash', name: 'GCash', icon: FaQrcode, color: 'bg-blue-500' },
     { id: 'cash', name: 'Cash', icon: FaWallet, color: 'bg-green-500' }
   ];
 
@@ -141,7 +141,7 @@ const Conversion = ({ show, onClose }) => {
     const { name, value } = e.target;
     
     // Special handling for GCash number
-    if (name === 'cardNumber' && formData.paymentMethod === 'paytap') {
+    if (name === 'cardNumber' && formData.paymentMethod === 'gcash') {
       // Only allow digits and limit to 11 characters
       const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
       const validation = validateGCashNumber(digitsOnly);
@@ -185,7 +185,7 @@ const Conversion = ({ show, onClose }) => {
 
   // Clear GCash error when payment method changes
   useEffect(() => {
-    if (formData.paymentMethod !== 'paytap') {
+    if (formData.paymentMethod !== 'gcash') {
       setGcashError('');
     }
   }, [formData.paymentMethod]);
@@ -278,7 +278,7 @@ const Conversion = ({ show, onClose }) => {
       return;
     }
 
-    if (formData.paymentMethod === 'paytap') {
+    if (formData.paymentMethod === 'gcash') {
       if (!formData.cardNumber) {
         alert('GCash number is required');
         return;
@@ -297,10 +297,23 @@ const Conversion = ({ show, onClose }) => {
       const generatedTransactionCode = `TXN-${Date.now()}`;
       setTransactionCode(generatedTransactionCode);
 
+      // Get business name from vendor document
+      let vendorBusinessName = '';
+      try {
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          vendorBusinessName = await getBusinessName(currentUser.uid) || '';
+        }
+      } catch (error) {
+        console.error('Error fetching business name:', error);
+        // Continue with conversion creation even if business name fetch fails
+      }
+
       // ✅ Include vendorId in the conversion record
       const conversionRecord = {
         vendorId: conversionData.vendorId, // ✅ ADD THIS - Firebase Auth user ID
         vendorName: conversionData.vendorName, // User's email
+        businessName: vendorBusinessName, // ✅ Business name from vendor document
         pointBalance: conversionData.pointBalance,
         paymentMethod: conversionData.chosenPaymentMethod,
         conversionAmount: parseInt(conversionData.conversionAmount),
@@ -314,32 +327,16 @@ const Conversion = ({ show, onClose }) => {
       console.log('📤 Submitting conversion:', conversionRecord);
       await addConversion(conversionRecord);
 
-      // Subtract points from user account when conversion is submitted
-      const currentUser = getCurrentUser();
-      if (currentUser) {
-        try {
-          const pointsToSubtract = Math.floor(amount); // Convert amount to points (1 peso = 1 point)
-          if (pointsToSubtract > 0 && conversionData.pointBalance >= pointsToSubtract) {
-            await subtractPoints(currentUser.uid, pointsToSubtract);
-            console.log(`Subtracted ${pointsToSubtract} points from vendor account`);
-          } else if (pointsToSubtract > conversionData.pointBalance) {
-            alert('Insufficient points balance for this conversion.');
-            setLoading(false);
-            return;
-          }
-        } catch (error) {
-          console.error('Error subtracting points:', error);
-          alert('Conversion request submitted, but failed to update points. Please contact support.');
-        }
-      }
+      // Points will be deducted only when the conversion request is approved by admin
+      // No points are deducted at submission time when status is 'pending'
 
-      alert(`Conversion request submitted successfully!\nTransaction Code: ${generatedTransactionCode}`);
+      alert(`Conversion request submitted successfully!\nTransaction Code: ${generatedTransactionCode}\n\nNote: Points will be deducted when your request is approved.`);
       setShowConversionPopup(false);
       
       // Reset form
       setFormData({
         date: new Date().toISOString().split('T')[0],
-        paymentMethod: 'paytap',
+        paymentMethod: 'gcash',
         cardNumber: '',
         amount: ''
       });
@@ -394,7 +391,7 @@ const Conversion = ({ show, onClose }) => {
       return;
     }
 
-    if (formData.paymentMethod === 'paytap') {
+    if (formData.paymentMethod === 'gcash') {
       if (!formData.cardNumber) {
         alert('Please enter GCash number');
         return;
@@ -517,7 +514,7 @@ const Conversion = ({ show, onClose }) => {
             </div>
           </div>
 
-          {formData.paymentMethod === 'paytap' && (
+          {formData.paymentMethod === 'gcash' && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">GCash Number *</label>
               <input
@@ -616,8 +613,11 @@ const Conversion = ({ show, onClose }) => {
               <p className="text-gray-300 mb-2">
                 Amount: {conversionData.conversionAmount} points
               </p>
-              <p className="text-gray-400 text-sm mb-4">
-                Remaining after conversion: {conversionData.pointBalance - conversionData.conversionAmount} points
+              <p className="text-yellow-400 text-sm mb-2">
+                ⚠️ Points will be deducted when request is approved
+              </p>
+              <p className="text-gray-400 text-xs mb-4">
+                Current balance: {conversionData.pointBalance} points | After approval: {conversionData.pointBalance - conversionData.conversionAmount} points
               </p>
               <div className="flex gap-3 mt-6">
                 <button

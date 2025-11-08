@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import BottomNav from '../components/shared/BottomNav'
 import Greetings from '../components/Greetings'
 import { BsCashCoin } from 'react-icons/bs'
+import { FaCoins } from 'react-icons/fa'
+import { MdAccountBalanceWallet } from 'react-icons/md'
 import MiniCard from '../components/MiniCard'
 import  RecentOrders  from '../components/RecentOrders'
 import PopularDishes from '../components/PopularDishes'
@@ -12,6 +14,8 @@ import { db } from '../firebase/config'
 const Home = () => {
     const [showEarningsModal, setShowEarningsModal] = useState(false);
     const [totalEarnings, setTotalEarnings] = useState(0);
+    const [paytapPoints, setPaytapPoints] = useState(0);
+    const [cashPHP, setCashPHP] = useState(0);
     const [percentageChange, setPercentageChange] = useState(0);
 
     useEffect(() => {
@@ -70,9 +74,13 @@ const Home = () => {
 
             // Calculate today's earnings
             let todayEarnings = 0;
+            let todayPaytapPoints = 0;
+            let todayCashPHP = 0;
+            
             todayOrders.forEach((doc) => {
                 const data = doc.data();
                 const createdAt = data.createdAt;
+                const paymentMethod = data.paymentMethod || '';
                 
                 if (createdAt) {
                     const orderDate = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
@@ -80,12 +88,26 @@ const Home = () => {
                         if (data.status === 'Completed' || !data.status) {
                             if (data.totalAmount) {
                                 todayEarnings += data.totalAmount;
+                                // Breakdown by payment method
+                                if (paymentMethod === 'gcash') {
+                                    // 1 peso = 1 point
+                                    todayPaytapPoints += Math.floor(data.totalAmount);
+                                } else if (paymentMethod === 'cash') {
+                                    todayCashPHP += data.totalAmount;
+                                }
                             }
                         }
                     }
                 } else if (data.status === 'Completed' || !data.status) {
                     if (data.totalAmount) {
                         todayEarnings += data.totalAmount;
+                        // Breakdown by payment method
+                        if (paymentMethod === 'gcash') {
+                            // 1 peso = 1 point
+                            todayPaytapPoints += Math.floor(data.totalAmount);
+                        } else if (paymentMethod === 'cash') {
+                            todayCashPHP += data.totalAmount;
+                        }
                     }
                 }
             });
@@ -111,6 +133,8 @@ const Home = () => {
             });
 
             setTotalEarnings(todayEarnings);
+            setPaytapPoints(todayPaytapPoints);
+            setCashPHP(todayCashPHP);
 
             // Calculate percentage change
             if (yesterdayEarnings > 0) {
@@ -124,6 +148,8 @@ const Home = () => {
         } catch (error) {
             console.error('Error fetching today earnings:', error);
             setTotalEarnings(0);
+            setPaytapPoints(0);
+            setCashPHP(0);
             setPercentageChange(0);
         }
     };
@@ -135,14 +161,26 @@ const Home = () => {
             {/*Left Dive*/}
             <div className='flex-[3]'>
             <Greetings />
-            <div className="flex items-center w-full px-8 mt-8">
+            <div className="flex items-center gap-4 w-full px-8 mt-8">
             <MiniCard 
                 title="Total Earnings" 
                 icon={<BsCashCoin />} 
                 number={totalEarnings.toFixed(2)}
                 footerNum={percentageChange.toFixed(1)}
                 onIconClick={() => setShowEarningsModal(true)}
-                fullWidth={true}
+                cardType="earnings"
+            />
+            <MiniCard 
+                title="PayTap Points" 
+                icon={<FaCoins />} 
+                number={paytapPoints.toLocaleString()}
+                cardType="points"
+            />
+            <MiniCard 
+                title="Cash" 
+                icon={<MdAccountBalanceWallet />} 
+                number={cashPHP.toFixed(2)}
+                cardType="cash"
             />
             </div>
             <RecentOrders />

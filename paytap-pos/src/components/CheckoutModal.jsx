@@ -30,11 +30,11 @@ const CheckoutModal = ({
     }
   }, [isOpen]);
 
-  // Start PayTap flow when modal opens
+  // Start GCash flow when modal opens
   useEffect(() => {
-    const isPayTap = paymentMethod === 'gcash' || paymentMethod === 'paytap';
+    const isGCash = paymentMethod === 'gcash';
     
-    if (isPayTap && isOpen && !hasStartedPayTapFlow.current) {
+    if (isGCash && isOpen && !hasStartedPayTapFlow.current) {
       hasStartedPayTapFlow.current = true;
       setIsWaitingForRFID(true);
       

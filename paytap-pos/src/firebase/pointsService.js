@@ -18,10 +18,11 @@ export const initializeVendor = async (userId, userEmail = null) => {
         userId: userId,
         email: userEmail || '',
         points: 0, // Initial points balance
+        businessName: '', // Business name field
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      return { points: 0 };
+      return { points: 0, businessName: '' };
     }
 
     return vendorDoc.data();
@@ -148,6 +149,60 @@ export const setPoints = async (userId, newPoints) => {
     return updatedDoc.data();
   } catch (error) {
     console.error('Error setting points:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get business name for a vendor
+ * @param {string} userId - Firebase Auth user ID
+ * @returns {Promise<string>} Business name
+ */
+export const getBusinessName = async (userId) => {
+  try {
+    const vendorDocRef = doc(vendorsRef, userId);
+    const vendorDoc = await getDoc(vendorDocRef);
+
+    if (!vendorDoc.exists()) {
+      // Initialize if doesn't exist
+      await initializeVendor(userId);
+      return '';
+    }
+
+    const data = vendorDoc.data();
+    return data.businessName || '';
+  } catch (error) {
+    console.error('Error getting business name:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update business name for a vendor
+ * @param {string} userId - Firebase Auth user ID
+ * @param {string} businessName - New business name
+ * @returns {Promise<object>} Updated vendor data
+ */
+export const updateBusinessName = async (userId, businessName) => {
+  try {
+    const vendorDocRef = doc(vendorsRef, userId);
+    
+    // Check if document exists, if not create it
+    const vendorDoc = await getDoc(vendorDocRef);
+    if (!vendorDoc.exists()) {
+      await initializeVendor(userId);
+    }
+
+    await updateDoc(vendorDocRef, {
+      businessName: businessName || '',
+      updatedAt: serverTimestamp()
+    });
+
+    // Get updated document
+    const updatedDoc = await getDoc(vendorDocRef);
+    return updatedDoc.data();
+  } catch (error) {
+    console.error('Error updating business name:', error);
     throw error;
   }
 };

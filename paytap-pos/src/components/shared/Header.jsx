@@ -10,6 +10,7 @@ import { useWebSocket } from "../../hooks/useWebSocket";
 
 const Header = () => {
   const [pointBalance, setPointBalance] = useState(0);
+  const [businessName, setBusinessName] = useState('');
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [user, setUser] = useState(null);
   const [loadingPoints, setLoadingPoints] = useState(true);
@@ -46,6 +47,7 @@ const Header = () => {
         setupPointsListener(authUser.uid);
       } else {
         setPointBalance(0);
+        setBusinessName('');
         setLoadingPoints(false);
       }
     });
@@ -69,14 +71,17 @@ const Header = () => {
           if (docSnapshot.exists()) {
             const data = docSnapshot.data();
             setPointBalance(data.points || 0);
+            setBusinessName(data.businessName || '');
           } else {
             setPointBalance(0);
+            setBusinessName('');
           }
           setLoadingPoints(false);
         },
         (error) => {
-          console.error('Error listening to points:', error);
+          console.error('Error listening to vendor data:', error);
           setPointBalance(0);
+          setBusinessName('');
           setLoadingPoints(false);
         }
       );
@@ -197,6 +202,9 @@ const Header = () => {
               <FaUserCircle className="text-[#f5f5f5] text-4xl" />
               <div className="flex flex-col items-start">
                 <h1 className="text-md text-[#f5f5f5] font-semibold">{getUserDisplayName()}</h1>
+                {businessName && (
+                  <p className="text-xs text-gray-400">{businessName}</p>
+                )}
               </div>
             </div>
           </div>

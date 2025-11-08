@@ -9,7 +9,7 @@ import BackButton from "../components/shared/BackButton";
 import { addDoc, serverTimestamp } from "firebase/firestore";
 import CheckoutModal from "../components/CheckoutModal";
 import { getCurrentUser } from "../firebase/authService";
-import { addPoints } from "../firebase/pointsService";
+import { addPoints, getBusinessName } from "../firebase/pointsService";
 
 
 const Menu = () => {
@@ -74,11 +74,20 @@ const Menu = () => {
   // ✅ CRITICAL FIX: Updated to receive customerId and customerName from CheckoutModal
   const handlePaymentSuccess = async (amount, customerId = null, customerName = null) => {
     try {
-      // Convert 'gcash' to 'paytap' for database consistency
-      const normalizedPaymentMethod = paymentMethod === 'gcash' ? 'paytap' : paymentMethod;
-      
       // Determine customer name (fallback to Redux if not provided)
       const finalCustomerName = customerName || customerData?.customerName || "Unknown";
+      
+      // Get business name from vendor document
+      let vendorBusinessName = '';
+      try {
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          vendorBusinessName = await getBusinessName(currentUser.uid) || '';
+        }
+      } catch (error) {
+        console.error('Error fetching business name:', error);
+        // Continue with order creation even if business name fetch fails
+      }
       
       // Save order to Firebase
       await addDoc(collection(db, "orders"), {
@@ -93,13 +102,14 @@ const Menu = () => {
           subtotal: item.price * item.qty,
         })),
         totalAmount: total,
-        paymentMethod: normalizedPaymentMethod,
+        paymentMethod: paymentMethod, // Store 'gcash' directly instead of converting to 'paytap'
+        businessName: vendorBusinessName, // ✅ Business name from vendor document
         createdAt: serverTimestamp(),
         status: "Completed"
       });
 
-      // Update vendor points for PayTap payments
-      if (normalizedPaymentMethod === 'paytap') {
+      // Update vendor points for GCash payments
+      if (paymentMethod === 'gcash') {
         try {
           const currentUser = getCurrentUser();
           if (currentUser) {
