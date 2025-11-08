@@ -38,80 +38,85 @@ const BottomNav = () => {
   const isContactSupportActive = location.pathname === "/contact-support";
 
   return (
-    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] p-2 h-16 flex items-center justify-around z-50'>
-      {/* Home */}
-      <button 
-        onClick={() => navigate("/")} 
-        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
-          isHomeActive 
-            ? 'text-[#f5f5f5] bg-[#343434]' 
-            : 'text-[#ababab] hover:text-[#f5f5f5]'
-        }`}
-      >
-        <FaHome className="inline mr-2" /> Home
-      </button>
+    <div className='fixed bottom-0 left-0 right-0 bg-[#262626] px-2 py-2 h-20 flex items-center justify-center z-50'>
+      <div className='flex items-center justify-center gap-3 h-full w-full'>
+        {/* Left Side - Home and Sales Tracking */}
+        <div className='flex items-center gap-3 h-full flex-1 justify-end pr-4'>
+          <button 
+            onClick={() => navigate("/")} 
+            className={`flex items-center justify-center px-7 py-4 h-full rounded-[20px] transition ${
+              isHomeActive 
+                ? 'text-[#f5f5f5] bg-[#343434]' 
+                : 'text-[#ababab] hover:text-[#f5f5f5]'
+            }`}
+          >
+            <FaHome className="inline mr-2 text-2xl" /> <span className="text-lg font-semibold">Home</span>
+          </button>
 
-      {/* Sales Tracking */}
-      <button 
-        onClick={() => navigate("/orders")} 
-        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
-          isOrdersActive 
-            ? 'text-[#f5f5f5] bg-[#343434]' 
-            : 'text-[#ababab] hover:text-[#f5f5f5]'
-        }`}
-      >
-        <MdOutlineReorder className="inline mr-2" /> <p>Sales Tracking</p>
-      </button>
+          <button 
+            onClick={() => navigate("/orders")} 
+            className={`flex items-center justify-center px-7 py-4 h-full rounded-[20px] transition ${
+              isOrdersActive 
+                ? 'text-[#f5f5f5] bg-[#343434]' 
+                : 'text-[#ababab] hover:text-[#f5f5f5]'
+            }`}
+          >
+            <MdOutlineReorder className="inline mr-2 text-2xl" /> <span className="text-lg font-semibold">Sales Tracking</span>
+          </button>
+        </div>
 
-      {/* Create Order Button - Centered */}
-      <button
-        disabled={location.pathname === "/menu"}
-        onClick={() => setIsModalOpen(true)}
-        className={`flex items-center justify-center rounded-full p-3 transition ${
-          location.pathname === "/menu"
-            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            : 'bg-[#F6B100] text-[#f5f5f5] hover:bg-yellow-600'
-        }`}
-        title="Create Order"
-      >
-        <BiSolidDish size={30} />
-      </button>
+        {/* Create Order Button - Centered */}
+        <div className='flex items-center justify-center flex-shrink-0'>
+          <button
+            disabled={location.pathname === "/menu"}
+            onClick={() => setIsModalOpen(true)}
+            className={`flex items-center justify-center rounded-full p-6 transition ${
+              location.pathname === "/menu"
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                : 'bg-[#F6B100] text-[#f5f5f5] hover:bg-yellow-600 shadow-lg'
+            }`}
+            title="Create Order"
+          >
+            <BiSolidDish size={40} />
+          </button>
+        </div>
 
-      {/* Request Conversion — opens popup instead of routing */}
-      <button 
-        onClick={() => setIsConversionOpen(true)} 
-        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
-          isConversionActive 
-            ? 'text-[#f5f5f5] bg-[#343434]' 
-            : 'text-[#ababab] hover:text-[#f5f5f5]'
-        }`}
-      >
-        <SiConvertio className="inline mr-2" /> <p>Request Conversion</p>
-      </button>
+        {/* Right Side - Request Conversion, Menu Management, Contact Support */}
+        <div className='flex items-center gap-3 h-full flex-1 justify-start pl-4'>
+          <button 
+            onClick={() => setIsConversionOpen(true)} 
+            className={`flex items-center justify-center px-7 py-4 h-full rounded-[20px] transition ${
+              isConversionActive 
+                ? 'text-[#f5f5f5] bg-[#343434]' 
+                : 'text-[#ababab] hover:text-[#f5f5f5]'
+            }`}
+          >
+            <SiConvertio className="inline mr-2 text-2xl" /> <span className="text-lg font-semibold">Request Conversion</span>
+          </button>
 
-      {/* Menu Management */}
-      <button 
-        onClick={() => setIsMenuManagerOpen(true)}
-        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
-          isMenuManagerActive 
-            ? 'text-[#f5f5f5] bg-[#343434]' 
-            : 'text-[#ababab] hover:text-[#f5f5f5]'
-        }`}
-      >
-        <CiCircleMore className="inline mr-2" /> <p>Menu Management</p>
-      </button>
+          <button 
+            onClick={() => setIsMenuManagerOpen(true)}
+            className={`flex items-center justify-center px-7 py-4 h-full rounded-[20px] transition ${
+              isMenuManagerActive 
+                ? 'text-[#f5f5f5] bg-[#343434]' 
+                : 'text-[#ababab] hover:text-[#f5f5f5]'
+            }`}
+          >
+            <CiCircleMore className="inline mr-2 text-2xl" /> <span className="text-lg font-semibold">Menu Management</span>
+          </button>
 
-      {/* Contact Support */}
-      <button 
-        onClick={() => navigate("/contact-support")}
-        className={`flex items-center justify-center flex-1 rounded-[20px] transition ${
-          isContactSupportActive 
-            ? 'text-[#f5f5f5] bg-[#343434]' 
-            : 'text-[#ababab] hover:text-[#f5f5f5]'
-        }`}
-      >
-        <FaQuestionCircle className="inline mr-2" /> <p>Contact Support</p>
-      </button>
+          <button 
+            onClick={() => navigate("/contact-support")}
+            className={`flex items-center justify-center px-7 py-4 h-full rounded-[20px] transition ${
+              isContactSupportActive 
+                ? 'text-[#f5f5f5] bg-[#343434]' 
+                : 'text-[#ababab] hover:text-[#f5f5f5]'
+            }`}
+          >
+            <FaQuestionCircle className="inline mr-2 text-2xl" /> <span className="text-lg font-semibold">Contact Support</span>
+          </button>
+        </div>
+      </div>
 
       {/* Order Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create Order">
