@@ -1,9 +1,18 @@
 // src/hooks/useWebSocket.js
-// React hook for WebSocket connection to ESP32 server
+// Production-ready React hook for WebSocket connection
 
 import { useEffect, useRef, useState } from 'react';
 
-const WEBSOCKET_URL = 'ws://localhost:5173/ws';
+// Automatically detect environment
+const isDevelopment = import.meta.env.MODE === 'development';
+
+// WebSocket URL - prioritize environment variable, fallback to defaults
+const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || (
+  isDevelopment 
+    ? 'ws://localhost:10000/ws'                    // Local development (matches server.js default)
+    : 'wss://paytap-backend.onrender.com/ws'       // Production
+);
+
 const RECONNECT_INTERVAL = 5000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
@@ -17,6 +26,10 @@ export const useWebSocket = () => {
   const isIntentionalDisconnect = useRef(false);
 
   useEffect(() => {
+    console.log(`🌐 Environment: ${isDevelopment ? 'Development' : 'Production'}`);
+    console.log(`🔌 WebSocket URL: ${WEBSOCKET_URL}`);
+    console.log(`🔌 Using env variable: ${import.meta.env.VITE_WEBSOCKET_URL ? 'Yes' : 'No (fallback)'}`);
+    
     connectWebSocket();
 
     return () => {
@@ -46,10 +59,11 @@ export const useWebSocket = () => {
         ws.send(JSON.stringify({
           type: 'web_connected',
           client_type: 'react_pos',
+          environment: isDevelopment ? 'development' : 'production',
           timestamp: new Date().toISOString()
         }));
 
-        // Make WebSocket globally accessible for CheckoutModal
+        // Make WebSocket globally accessible
         window.viteWebSocket = ws;
       };
 
@@ -57,7 +71,6 @@ export const useWebSocket = () => {
         try {
           const data = JSON.parse(event.data);
           console.log('📨 WebSocket message:', data);
-
           handleWebSocketMessage(data);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -98,6 +111,7 @@ export const useWebSocket = () => {
     switch (data.type) {
       case 'welcome':
         console.log('✅ Server welcome:', data.message);
+        console.log('   Environment:', data.environment);
         break;
 
       case 'connection_confirmed':
@@ -107,12 +121,21 @@ export const useWebSocket = () => {
       case 'esp32_status':
         console.log(`📡 ESP32 status: ${data.status}`);
         setEsp32Status(data.status);
+        
+        // Show notification
+        if (data.status === 'connected') {
+          console.log(`✅ ESP32 device ${data.device_id} is now online`);
+        } else {
+          console.log(`❌ ESP32 device ${data.device_id} went offline`);
+        }
         break;
 
       case 'rfid_scan':
         console.log('📇 RFID card scanned:', data.rfid_uid);
+        console.log('   Device:', data.device_id);
+        console.log('   Network:', data.network);
         
-        // Dispatch custom event for CheckoutModal to listen to
+        // Dispatch custom event for CheckoutModal
         const rfidEvent = new CustomEvent('rfid-card-scanned', {
           detail: {
             uid: data.rfid_uid,
@@ -126,10 +149,22 @@ export const useWebSocket = () => {
 
       case 'payment_success':
         console.log('✅ Payment success notification:', data);
+        
+        // Dispatch event for UI updates
+        const successEvent = new CustomEvent('payment-success', {
+          detail: data
+        });
+        window.dispatchEvent(successEvent);
         break;
 
       case 'payment_failed':
         console.log('❌ Payment failed notification:', data);
+        
+        // Dispatch event for UI updates
+        const failedEvent = new CustomEvent('payment-failed', {
+          detail: data
+        });
+        window.dispatchEvent(failedEvent);
         break;
 
       case 'scan_received':
@@ -138,6 +173,11 @@ export const useWebSocket = () => {
 
       case 'pong':
         // Heartbeat response
+        break;
+
+      case 'error':
+        console.error('❌ Server error:', data.message);
+        setConnectionError(data.message);
         break;
 
       default:
@@ -151,6 +191,7 @@ export const useWebSocket = () => {
       return true;
     } else {
       console.warn('⚠️ WebSocket not connected. Cannot send message.');
+      setConnectionError('WebSocket not connected');
       return false;
     }
   };
@@ -176,7 +217,8 @@ export const useWebSocket = () => {
     esp32Status,
     connectionError,
     sendMessage,
-    reconnect
+    reconnect,
+    websocketUrl: WEBSOCKET_URL
   };
 };
 
