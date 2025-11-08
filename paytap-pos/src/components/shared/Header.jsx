@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FaSearch, FaUserCircle, FaBell, FaWifi, FaCheckCircle, FaTimesCircle, FaSync } from "react-icons/fa";
+import { FaUserCircle, FaWifi, FaCheckCircle, FaTimesCircle, FaSync } from "react-icons/fa";
 import logo from "../../assets/images/logo.png";
 import EditProfileModal from "../EditProfileModal";
 import { getCurrentUser, onAuthStateChange } from "../../firebase/authService";
@@ -114,16 +114,18 @@ const Header = () => {
           <h1 className="text-lg font-semibold text-[#f5f5f5]">Canteen</h1>
         </div>
 
-        {/* Search and Points - Centered */}
+        {/* Business Name and Points - Centered */}
         <div className="flex items-center gap-3 flex-1 justify-center">
-          <div className="flex items-center gap-4 bg-[#1f1f1f] rounded-[20px] px-5 py-2 w-[400px]">
-            <FaSearch className="text-[#f5f5f5]" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="bg-[#1f1f1f] outline-none text-[#f5f5f5] w-full"
-            />
-          </div>
+          {/* Business Name */}
+          {businessName ? (
+            <div className="bg-[#1f1f1f] rounded-[20px] px-5 py-2">
+              <p className="text-[#f5f5f5] font-semibold text-2xl">{businessName}</p>
+            </div>
+          ) : (
+            <div className="bg-[#1f1f1f] rounded-[20px] px-5 py-2">
+              <p className="text-gray-400 text-lg">No business name set</p>
+            </div>
+          )}
 
           {/* Point Balance */}
           <div className="bg-[#2a2a2a] px-4 py-2 rounded-[20px] flex flex-col items-center justify-center text-center">
@@ -192,9 +194,6 @@ const Header = () => {
 
           {/* Logged User Details */}
           <div className="flex items-center gap-4">
-            <div className="bg-[#1f1f1f] rounded-[15x] p-3 cursor-pointer">
-              <FaBell className="text-[#f5f5f5] text-2xl" />
-            </div>
             <div 
               className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() => setShowEditProfile(true)}
