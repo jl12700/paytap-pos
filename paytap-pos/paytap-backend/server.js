@@ -1,5 +1,5 @@
-// server.js - Express + WebSocket Server for ESP32 RFID Scanner
-// Run this with: node server.js or nodemon server.js
+// server.js - Production-Ready Express + WebSocket Server
+// Compatible with Render.com deployment
 
 const express = require('express');
 const http = require('http');
@@ -7,35 +7,84 @@ const { WebSocketServer } = require('ws');
 const cors = require('cors');
 require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 5173;
+// ==================== ENVIRONMENT VALIDATION ====================
+const requiredEnvVars = ['NODE_ENV'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
-// Middleware
-app.use(cors());
+if (missingEnvVars.length > 0) {
+  console.warn('⚠️  Missing optional env vars:', missingEnvVars.join(', '));
+}
+
+// ==================== CONFIGURATION ====================
+const app = express();
+const PORT = process.env.PORT || 10000; // Render uses 10000 by default
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://paytap-pos.web.app'; // Your Firebase URL 
+
+console.log('=================================');
+console.log('  PayTap WebSocket Server');
+console.log(`  Environment: ${NODE_ENV}`);
+console.log(`  Port: ${PORT}`);
+console.log('=================================');
+
+// ==================== MIDDLEWARE ====================
+app.use(cors({
+  origin: [
+    FRONTEND_URL,
+    'https://paytap-pos.firebaseapp.com',
+    'http://localhost:5173', // Development
+    'http://localhost:5174',
+    'https://paytap-pos.web.app/',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
+
 app.use(express.json());
 
-// Create HTTP server
+// Trust proxy for Render
+app.set('trust proxy', 1);
+
+// ==================== HTTP SERVER ====================
 const server = http.createServer(app);
 
-// Create WebSocket server
-const wss = new WebSocketServer({ server, path: '/ws' });
+// ==================== WEBSOCKET SERVER ====================
+const wss = new WebSocketServer({ 
+  server,
+  path: '/ws',
+  // Render-specific settings
+  perMessageDeflate: false,
+  clientTracking: true,
+  maxPayload: 100 * 1024 // 100KB max message size
+});
 
 // Store connected clients with metadata
 const clients = new Map();
 
-console.log('=================================');
-console.log('  PayTap WebSocket Server');
-console.log('  Express + WebSocket');
-console.log('=================================');
-
-// REST API Routes
+// ==================== HEALTH CHECK ROUTES ====================
+// Critical for Render deployment monitoring
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
     service: 'PayTap WebSocket Server',
+    version: '1.0.0',
     connections: wss.clients.size,
+    environment: NODE_ENV,
     timestamp: new Date().toISOString()
   });
+});
+
+app.get('/health', (req, res) => {
+  const health = {
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: Date.now(),
+    connections: wss.clients.size,
+    memory: process.memoryUsage(),
+    environment: NODE_ENV
+  };
+  
+  res.status(200).json(health);
 });
 
 app.get('/api/status', (req, res) => {
@@ -45,46 +94,43 @@ app.get('/api/status', (req, res) => {
       type: data.type,
       device_id: data.device_id,
       connected_at: data.connected_at,
-      ip: data.ip
+      duration: Math.floor((Date.now() - new Date(data.connected_at).getTime()) / 1000)
     });
   });
   
   res.json({
     server: 'running',
+    environment: NODE_ENV,
     total_connections: wss.clients.size,
     clients: clientList,
-    uptime: process.uptime()
+    uptime: Math.floor(process.uptime()),
+    memory: process.memoryUsage()
   });
 });
 
-app.post('/api/send-message', (req, res) => {
-  const { message, target } = req.body;
-  
-  let sent = 0;
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) {
-      client.send(JSON.stringify(message));
-      sent++;
-    }
-  });
-  
-  res.json({ success: true, sent: sent });
-});
-
-// WebSocket Connection Handler
+// ==================== WEBSOCKET CONNECTION HANDLER ====================
 wss.on('connection', (ws, req) => {
-  const clientIP = req.socket.remoteAddress;
+  const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   
   // Store client metadata
   clients.set(ws, {
     ip: clientIP,
     connected_at: new Date().toISOString(),
     type: 'unknown',
-    device_id: null
+    device_id: null,
+    lastPing: Date.now()
   });
   
   console.log(`\n✅ New connection from: ${clientIP}`);
   console.log(`   Total connections: ${wss.clients.size}`);
+  
+  // Send welcome message
+  ws.send(JSON.stringify({
+    type: 'welcome',
+    message: 'Connected to PayTap WebSocket Server',
+    server_time: new Date().toISOString(),
+    environment: NODE_ENV
+  }));
   
   // Handle messages from clients
   ws.on('message', (data) => {
@@ -96,14 +142,17 @@ wss.on('connection', (ws, req) => {
       
       // Update client metadata
       const clientData = clients.get(ws);
-      if (message.device_id) {
-        clientData.device_id = message.device_id;
+      if (clientData) {
+        clientData.lastPing = Date.now();
+        if (message.device_id) {
+          clientData.device_id = message.device_id;
+        }
       }
       
       // Handle different message types
       switch(message.type) {
         case 'esp32_connected':
-          clientData.type = 'esp32';
+          if (clientData) clientData.type = 'esp32';
           console.log(`✓ ESP32 device connected: ${message.device_id}`);
           
           ws.send(JSON.stringify({
@@ -121,7 +170,7 @@ wss.on('connection', (ws, req) => {
           break;
           
         case 'web_connected':
-          clientData.type = 'web';
+          if (clientData) clientData.type = 'web';
           console.log(`✓ Web client connected`);
           
           ws.send(JSON.stringify({
@@ -155,13 +204,11 @@ wss.on('connection', (ws, req) => {
         case 'payment_request':
           console.log(`💳 Payment request: ₱${message.amount} for card ${message.rfid_uid}`);
           
-          // Here you can integrate with your payment processing logic
-          // For now, simulate payment processing
+          // Simulate payment processing
           setTimeout(() => {
             const success = true; // Replace with actual payment logic
             
             if (success) {
-              // Send success to ESP32
               broadcastToESP32({
                 type: 'payment_success',
                 rfid_uid: message.rfid_uid,
@@ -170,7 +217,6 @@ wss.on('connection', (ws, req) => {
                 timestamp: new Date().toISOString()
               });
               
-              // Also notify web clients
               broadcastToWeb({
                 type: 'payment_success',
                 rfid_uid: message.rfid_uid,
@@ -199,7 +245,6 @@ wss.on('connection', (ws, req) => {
           
         default:
           console.log(`⚠ Unknown message type: ${message.type}`);
-          // Broadcast unknown messages to all clients
           broadcastToAll(message, ws);
       }
       
@@ -236,15 +281,16 @@ wss.on('connection', (ws, req) => {
     console.error('❌ WebSocket error:', error);
   });
   
-  // Send welcome message
-  ws.send(JSON.stringify({
-    type: 'welcome',
-    message: 'Connected to PayTap WebSocket Server',
-    server_time: new Date().toISOString()
-  }));
+  // Handle pong response
+  ws.on('pong', () => {
+    const clientData = clients.get(ws);
+    if (clientData) {
+      clientData.lastPing = Date.now();
+    }
+  });
 });
 
-// Helper function: Broadcast to all clients
+// ==================== BROADCAST HELPERS ====================
 function broadcastToAll(message, sender = null) {
   const messageStr = JSON.stringify(message);
   let count = 0;
@@ -260,7 +306,6 @@ function broadcastToAll(message, sender = null) {
   return count;
 }
 
-// Helper function: Broadcast to ESP32 devices only
 function broadcastToESP32(message) {
   const messageStr = JSON.stringify(message);
   let count = 0;
@@ -277,7 +322,6 @@ function broadcastToESP32(message) {
   return count;
 }
 
-// Helper function: Broadcast to web clients only
 function broadcastToWeb(message) {
   const messageStr = JSON.stringify(message);
   let count = 0;
@@ -294,18 +338,45 @@ function broadcastToWeb(message) {
   return count;
 }
 
-// Start server
+// ==================== KEEP ALIVE ====================
+// Ping all clients every 30 seconds
+setInterval(() => {
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) {
+      client.ping();
+    }
+  });
+}, 30000);
+
+// Clean up stale connections (no pong in 2 minutes)
+setInterval(() => {
+  const now = Date.now();
+  clients.forEach((data, ws) => {
+    if (now - data.lastPing > 120000) {
+      console.log(`⚠️ Terminating stale connection: ${data.type} - ${data.device_id}`);
+      ws.terminate();
+    }
+  });
+}, 60000);
+
+// ==================== SERVER STARTUP ====================
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n✅ Server running on port ${PORT}`);
+  console.log(`   Environment: ${NODE_ENV}`);
   console.log(`   HTTP: http://localhost:${PORT}`);
   console.log(`   WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`\n   Local WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`   Network WebSocket: ws://0.0.0.0:${PORT}/ws`);
+  
+  if (NODE_ENV === 'production') {
+    console.log(`\n   Production URLs:`);
+    console.log(`   HTTP: https://your-app.onrender.com`);
+    console.log(`   WebSocket: wss://your-app.onrender.com/ws`);
+  }
+  
   console.log('\n👂 Waiting for connections...\n');
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// ==================== GRACEFUL SHUTDOWN ====================
+const shutdown = () => {
   console.log('\n\n🛑 Shutting down server...');
   
   wss.clients.forEach((client) => {
@@ -316,21 +387,23 @@ process.on('SIGINT', () => {
     console.log('✅ Server closed');
     process.exit(0);
   });
+  
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    console.error('❌ Forced shutdown');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// ==================== ERROR HANDLERS ====================
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  shutdown();
 });
 
-// Keep alive ping every 30 seconds
-setInterval(() => {
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) {
-      client.ping();
-    }
-  });
-}, 30000);
-
-// Log server status every minute
-setInterval(() => {
-  console.log(`\n📊 Server Status: ${wss.clients.size} connections`);
-  clients.forEach((data, ws) => {
-    console.log(`   - ${data.type}: ${data.device_id || 'unknown'} (${data.ip})`);
-  });
-}, 60000);
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
