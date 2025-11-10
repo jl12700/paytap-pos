@@ -30,15 +30,14 @@ const CheckoutModal = ({
     }
   }, [isOpen]);
 
-  // Start GCash flow when modal opens
+  // Start PayTap flow when modal opens
   useEffect(() => {
-    const isGCash = paymentMethod === 'gcash';
+    const isPayTap = paymentMethod === 'gcash';
     
-    if (isGCash && isOpen && !hasStartedPayTapFlow.current) {
+    if (isPayTap && isOpen && !hasStartedPayTapFlow.current) {
       hasStartedPayTapFlow.current = true;
       setIsWaitingForRFID(true);
       
-      // Listen for RFID scan event (from Vite WebSocket)
       window.addEventListener('rfid-card-scanned', handleRFIDScanned);
     }
 
@@ -68,7 +67,6 @@ const CheckoutModal = ({
       return;
     }
 
-    // Prevent duplicate processing
     if (rfidUid === lastScannedCardRef.current) {
       console.log('Card already processed, ignoring duplicate scan');
       return;
@@ -83,7 +81,7 @@ const CheckoutModal = ({
     await processPayTapPayment(rfidUid);
   };
 
-  // Process PayTap payment with RFID (Direct Supabase)
+  // Process PayTap payment
   const processPayTapPayment = async (rfidUid) => {
     setIsWaitingForRFID(false);
     setIsProcessing(true);
@@ -92,86 +90,51 @@ const CheckoutModal = ({
     try {
       console.log('🔍 Processing payment for RFID:', rfidUid);
 
-      // Normalize RFID UID (uppercase, trim whitespace)
       const normalizedUid = rfidUid.trim().toUpperCase();
 
-      // Step 1: Search for card in Supabase
+      // Step 1: Search for card
       const { data: card, error: searchError } = await supabase
         .from('rfid_cards')
         .select('*')
         .eq('rfid_uid', normalizedUid)
         .single();
 
-      if (searchError) {
-        console.error('❌ Card search error:', searchError);
-        throw new Error('Card not found in database');
-      }
-
-      if (!card) {
+      if (searchError || !card) {
         throw new Error('Card not found in database');
       }
 
       console.log('✅ Card found:', card);
 
-      // Step 2: Validate card status
+      // Step 2: Validate card
       if (card.status !== 'active') {
         throw new Error('Card is inactive. Please contact admin.');
       }
 
-      // Step 3: Check balance
       if (card.balance < totalAmount) {
         throw new Error(
           `Insufficient balance! Current: ₱${card.balance.toFixed(2)}, Required: ₱${totalAmount.toFixed(2)}`
         );
       }
 
-      // Step 4: Calculate new balance
+      // Step 3: Calculate new balance
       const oldBalance = parseFloat(card.balance);
       const newBalance = oldBalance - totalAmount;
 
-      console.log('💰 Balance calculation:', {
-        old: oldBalance,
-        deduct: totalAmount,
-        new: newBalance
-      });
-
-      // Step 5: Update balance in Supabase (with error details)
+      // Step 4: Update balance
       const { data: updatedCard, error: updateError } = await supabase
         .from('rfid_cards')
-        .update({
-          balance: newBalance
-          // Note: Don't update 'updated_at' if it's auto-managed by Supabase
-        })
+        .update({ balance: newBalance })
         .eq('rfid_uid', normalizedUid)
         .select()
         .single();
 
-      if (updateError) {
-        console.error('❌ Balance update error:', updateError);
-        console.error('   Error details:', {
-          message: updateError.message,
-          code: updateError.code,
-          details: updateError.details,
-          hint: updateError.hint
-        });
-        
-        // Provide more specific error messages
-        if (updateError.code === '42501') {
-          throw new Error('Database permission error. Please check RLS policies.');
-        } else if (updateError.code === '23505') {
-          throw new Error('Duplicate entry error');
-        } else {
-          throw new Error(`Failed to update balance: ${updateError.message}`);
-        }
-      }
-
-      if (!updatedCard) {
-        throw new Error('Balance update returned no data');
+      if (updateError || !updatedCard) {
+        throw new Error(`Failed to update balance: ${updateError?.message || 'Unknown error'}`);
       }
 
       console.log('✅ Balance updated successfully:', updatedCard);
 
-      // Step 6: Log transaction
+      // Step 5: Log transaction
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert([{
@@ -186,12 +149,9 @@ const CheckoutModal = ({
 
       if (transactionError) {
         console.warn('⚠️ Transaction logging failed:', transactionError);
-        // Don't throw error - payment succeeded even if logging failed
-      } else {
-        console.log('✅ Transaction logged successfully');
       }
 
-      // Step 7: Update UI with success
+      // Step 6: Update UI
       setCardInfo({
         rfid_uid: normalizedUid,
         name: card.name,
@@ -200,12 +160,10 @@ const CheckoutModal = ({
         firebase_uid: card.firebase_uid
       });
 
-      // Show processing animation
       setTimeout(() => {
         setIsProcessing(false);
         setIsPaymentSuccessful(true);
 
-        // Send success response to ESP32 via WebSocket
         if (window.viteWebSocket) {
           window.viteWebSocket.send(JSON.stringify({
             type: 'payment_success',
@@ -215,9 +173,13 @@ const CheckoutModal = ({
           }));
         }
 
-        // Auto-close after success
+        // ✅ Pass customer info back to Menu.js (vendor info is added there)
         setTimeout(() => {
-          onPaymentSuccess(totalAmount, card.firebase_uid, card.name);
+          onPaymentSuccess(
+            totalAmount, 
+            card.firebase_uid,  // customer ID
+            card.name          // customer name
+          );
           onClose();
         }, 2500);
       }, 1500);
@@ -227,7 +189,6 @@ const CheckoutModal = ({
       setIsProcessing(false);
       setRfidError(error.message || 'Payment failed. Please try again.');
 
-      // Send failure response to ESP32
       if (window.viteWebSocket) {
         window.viteWebSocket.send(JSON.stringify({
           type: 'payment_failed',
@@ -236,7 +197,6 @@ const CheckoutModal = ({
         }));
       }
       
-      // Reset waiting state after error
       setTimeout(() => {
         setIsWaitingForRFID(true);
         setRfidError('');
@@ -245,15 +205,12 @@ const CheckoutModal = ({
     }
   };
 
-  // Simulate RFID tap for testing (DEV ONLY)
+  // Simulate RFID tap for testing
   const simulateRFIDTap = () => {
-    // ⚠️ UPDATE WITH REAL UID FROM YOUR DATABASE
     const testRfidUid = 'A1B2C3D4';
-    
     const event = new CustomEvent('rfid-card-scanned', {
       detail: { uid: testRfidUid }
     });
-    
     window.dispatchEvent(event);
   };
 
@@ -287,8 +244,14 @@ const CheckoutModal = ({
     
     setTimeout(() => {
       setIsPaymentSuccessful(true);
+      
+      // ✅ Pass null for customer (cash payment = walk-in)
       setTimeout(() => {
-        onPaymentSuccess(totalAmount, null, null);
+        onPaymentSuccess(
+          totalAmount, 
+          null,  // no customer ID for cash
+          null   // no customer name for cash
+        );
         onClose();
       }, 2000);
     }, 1500);
@@ -375,7 +338,6 @@ const CheckoutModal = ({
           {/* PayTap Flow */}
           {isPayTap && (
             <div className="mb-6">
-              {/* Waiting for RFID */}
               {isWaitingForRFID && !isProcessing && !isPaymentSuccessful && !rfidError && (
                 <div className="bg-blue-500/10 rounded-lg p-6 text-center border border-blue-500/30">
                   <FaSync className="animate-spin text-blue-400 text-4xl mx-auto mb-4" />
@@ -389,7 +351,6 @@ const CheckoutModal = ({
                     Amount to deduct: ₱{totalAmount.toFixed(2)}
                   </p>
                   
-                  {/* Test button (DEV ONLY) */}
                   {import.meta.env.DEV && (
                     <button
                       onClick={simulateRFIDTap}
@@ -401,7 +362,6 @@ const CheckoutModal = ({
                 </div>
               )}
 
-              {/* Processing Payment */}
               {isProcessing && !isPaymentSuccessful && (
                 <div className="bg-blue-500/10 rounded-lg p-6 text-center border border-blue-500/30">
                   <FaSync className="animate-spin text-blue-400 text-4xl mx-auto mb-4" />
@@ -419,7 +379,6 @@ const CheckoutModal = ({
                 </div>
               )}
 
-              {/* Payment Successful */}
               {isPaymentSuccessful && (
                 <div className="bg-green-500/10 rounded-lg p-6 text-center border border-green-500/30">
                   <FaCheckCircle className="text-green-400 text-4xl mx-auto mb-4" />
@@ -452,7 +411,6 @@ const CheckoutModal = ({
                 </div>
               )}
 
-              {/* Payment Error */}
               {rfidError && !isWaitingForRFID && (
                 <div className="bg-red-500/10 rounded-lg p-6 text-center border border-red-500/30">
                   <FaTimes className="text-red-400 text-4xl mx-auto mb-4" />

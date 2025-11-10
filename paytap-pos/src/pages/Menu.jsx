@@ -2,42 +2,60 @@ import React, { useEffect, useState } from "react";
 import { MdRestaurantMenu } from "react-icons/md";
 import { FaTrash, FaQrcode, FaWallet } from "react-icons/fa";
 import { useSelector } from "react-redux";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
-import { addDoc, serverTimestamp } from "firebase/firestore";
 import CheckoutModal from "../components/CheckoutModal";
+import { getMenuItems, getVendorProfile } from "../firebase/menuService";
 import { getCurrentUser } from "../firebase/authService";
-import { addPoints, getBusinessName } from "../firebase/pointsService";
-
+import { addPoints } from "../firebase/pointsService";
 
 const Menu = () => {
   const customerData = useSelector((state) => state.customer);
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('gcash'); // 'gcash' or 'cash'
+  const [paymentMethod, setPaymentMethod] = useState('gcash');
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
+  const [currentVendor, setCurrentVendor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // ✅ Fetch menu items from Firestore
+  // ✅ Fetch LOGGED-IN vendor's menu items
   useEffect(() => {
-    const fetchMenuItems = async () => {
+    const fetchVendorMenu = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "menuItems"));
-        const items = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        // Filter to show only items where isAvailable === true (items marked as "Available for ordering")
-        // Also include items where isAvailable is undefined (for backward compatibility with existing items)
-        const filteredItems = items.filter(item => item.isAvailable === true || item.isAvailable === undefined);
-        setMenuItems(filteredItems);
-      } catch (error) {
-        console.error("Error fetching menu items:", error);
+        setLoading(true);
+        setError(null);
+
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          setError('Please log in to your vendor account');
+          setLoading(false);
+          return;
+        }
+
+        console.log('📱 Loading menu for vendor:', currentUser.email);
+
+        // Fetch vendor profile
+        const vendor = await getVendorProfile();
+        setCurrentVendor(vendor);
+        console.log('✅ Vendor profile loaded:', vendor.businessName);
+
+        // Fetch THIS vendor's menu items (from vendors/{uid}/menuItems/)
+        const items = await getMenuItems();
+        setMenuItems(items);
+        console.log(`✅ Loaded ${items.length} menu items`);
+      } catch (err) {
+        console.error("❌ Error fetching vendor menu:", err);
+        setError(err.message || "Failed to load menu");
+      } finally {
+        setLoading(false);
       }
     };
-    fetchMenuItems();
+
+    fetchVendorMenu();
   }, []);
 
   // ✅ Add item to cart
@@ -65,34 +83,31 @@ const Menu = () => {
   const handleProceedToCheckout = () => {
     if (cart.length === 0) return;
     
-    // Generate order number
     const newOrderNumber = `ORD-${Date.now()}`;
     setOrderNumber(newOrderNumber);
     setShowCheckoutModal(true);
   };
 
-  // ✅ CRITICAL FIX: Updated to receive customerId and customerName from CheckoutModal
+  // ✅ Handle payment success - save with vendor info
   const handlePaymentSuccess = async (amount, customerId = null, customerName = null) => {
     try {
-      // Determine customer name (fallback to Redux if not provided)
-      const finalCustomerName = customerName || customerData?.customerName || "Unknown";
+      const currentUser = getCurrentUser();
       
-      // Get business name from vendor document
-      let vendorBusinessName = '';
-      try {
-        const currentUser = getCurrentUser();
-        if (currentUser) {
-          vendorBusinessName = await getBusinessName(currentUser.uid) || '';
-        }
-      } catch (error) {
-        console.error('Error fetching business name:', error);
-        // Continue with order creation even if business name fetch fails
+      if (!currentUser) {
+        console.error('No vendor logged in');
+        alert('Error: Please log in');
+        return;
       }
+
+      // Determine customer name
+      const finalCustomerName = customerName || customerData?.customerName || "Walk-in Customer";
       
-      // Save order to Firebase
+      console.log('💾 Saving order to database...');
+
+      // ✅ Save order to Firebase WITH LOGGED-IN VENDOR INFO
       await addDoc(collection(db, "orders"), {
         customerName: finalCustomerName,
-        customerId: customerId, // ✅ NOW SAVES FIREBASE_UID FROM RFID CARD
+        customerId: customerId,
         orderId: orderNumber,
         items: cart.map(item => ({
           id: item.id,
@@ -102,34 +117,39 @@ const Menu = () => {
           subtotal: item.price * item.qty,
         })),
         totalAmount: total,
-        paymentMethod: paymentMethod, // Store 'gcash' directly instead of converting to 'paytap'
-        businessName: vendorBusinessName, // ✅ Business name from vendor document
+        paymentMethod: paymentMethod,
+        businessName: currentVendor?.businessName || 'Unknown Vendor',
+        vendorId: currentUser.uid,          // ✅ CURRENT LOGGED-IN VENDOR
+        vendorEmail: currentUser.email,     // ✅ VENDOR EMAIL
         createdAt: serverTimestamp(),
         status: "Completed"
       });
 
-      // Update vendor points for GCash payments
+      console.log('✅ Order saved successfully:', {
+        orderId: orderNumber,
+        vendorId: currentUser.uid,
+        vendorEmail: currentUser.email,
+        businessName: currentVendor?.businessName,
+        totalAmount: total
+      });
+
+      // Update vendor points for PayTap payments
       if (paymentMethod === 'gcash') {
         try {
-          const currentUser = getCurrentUser();
-          if (currentUser) {
-            // Add points equal to the order amount (1 peso = 1 point)
-            const pointsToAdd = Math.floor(amount);
-            await addPoints(currentUser.uid, pointsToAdd);
-            console.log(`Added ${pointsToAdd} points to vendor account`);
-          }
+          const pointsToAdd = Math.floor(amount);
+          await addPoints(currentUser.uid, pointsToAdd);
+          console.log(`✅ Added ${pointsToAdd} points to vendor account`);
         } catch (error) {
-          console.error('Error updating vendor points:', error);
-          // Don't fail the order if points update fails
+          console.error('⚠️ Error updating vendor points:', error);
         }
       }
 
       alert("Order successfully placed!");
-      setCart([]); // ✅ Clear cart after placing order
+      setCart([]);
       setShowCheckoutModal(false);
     } catch (error) {
-      console.error("Error placing order:", error);
-      alert("Failed to place order!");
+      console.error("❌ Error placing order:", error);
+      alert("Failed to place order: " + error.message);
     }
   };
 
@@ -140,6 +160,35 @@ const Menu = () => {
       subtotal: item.price * item.qty,
     }));
   };
+
+  // ✅ Loading state
+  if (loading) {
+    return (
+      <section className="bg-[#1f1f1f] h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white text-xl">Loading your menu...</p>
+        </div>
+      </section>
+    );
+  }
+
+  // ✅ Error state
+  if (error) {
+    return (
+      <section className="bg-[#1f1f1f] h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 text-xl mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
   
   return (
     <section className="bg-[#1f1f1f] h-[calc(100vh-4rem)] overflow-hidden flex gap-3 pb-20">
@@ -148,15 +197,20 @@ const Menu = () => {
         <div className="flex items-center justify-between px-10 py-4 flex-shrink-0">
           <div className="flex items-center gap-4">
             <BackButton />
-            <h1 className="text-[#f5f5f5] text-2xl font-bold tracking-wider">
-              Menu
-            </h1>
+            <div>
+              <h1 className="text-[#f5f5f5] text-2xl font-bold tracking-wider">
+                {currentVendor?.businessName || 'Menu'}
+              </h1>
+              {currentVendor?.location && (
+                <p className="text-gray-400 text-sm">{currentVendor.location}</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <MdRestaurantMenu className="text-[#f5f5f5] text-3xl" />
             <div className="flex flex-col items-start">
               <h1 className="text-md text-[#f5f5f5] font-semibold">
-                {customerData.customerName || "Customer Name"}
+                {customerData.customerName || "Customer"}
               </h1>
             </div>
           </div>
@@ -188,9 +242,14 @@ const Menu = () => {
               </div>
             ))
           ) : (
-            <p className="text-gray-400 col-span-3 text-center mt-20">
-              Loading menu items...
-            </p>
+            <div className="col-span-3 text-center mt-20">
+              <p className="text-gray-400 text-lg mb-4">
+                No menu items yet
+              </p>
+              <p className="text-gray-500 text-sm">
+                Add items using the Menu Manager (+ button)
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -262,7 +321,7 @@ const Menu = () => {
         {/* ✅ BILL SECTION - Fixed at bottom */}
         <div className="border-t border-gray-700 pt-4 pb-4 flex-shrink-0">
           <h3 className="text-[#f5f5f5] text-lg font-semibold mb-2">Total</h3>
-          <p className="text-2xl font-bold text-yellow-400 mb-4">₱{total}</p>
+          <p className="text-2xl font-bold text-yellow-400 mb-4">₱{total.toFixed(2)}</p>
           
           {/* Payment Method Selection */}
           <div className="mb-4">
