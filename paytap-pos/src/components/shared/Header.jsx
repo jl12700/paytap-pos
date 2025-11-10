@@ -114,32 +114,19 @@ const Header = () => {
           <h1 className="text-lg font-semibold text-[#f5f5f5]">Canteen</h1>
         </div>
 
-        {/* Business Name and Points - Centered */}
-        <div className="flex items-center gap-3 flex-1 justify-center">
-          {/* Business Name */}
-          {businessName ? (
-            <div className="bg-[#1f1f1f] rounded-[20px] px-5 py-2">
-              <p className="text-[#f5f5f5] font-semibold text-2xl">{businessName}</p>
-            </div>
-          ) : (
-            <div className="bg-[#1f1f1f] rounded-[20px] px-5 py-2">
-              <p className="text-gray-400 text-lg">No business name set</p>
-            </div>
-          )}
 
-          {/* Point Balance */}
-          <div className="bg-[#2a2a2a] px-4 py-2 rounded-[20px] flex flex-col items-center justify-center text-center">
-            <p className="text-gray-400 text-xs">Points</p>
+        {/* Points, WebSocket Status and Profile - Right Side */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Point Balance - Horizontal Layout */}
+          <div className="bg-[#2a2a2a] px-6 py-3 rounded-lg flex items-center gap-2">
+            <span className="text-gray-400 text-xl font-medium">Points:</span>
             {loadingPoints ? (
-              <p className="text-yellow-400 font-bold text-lg">...</p>
+              <span className="text-yellow-400 font-bold text-xl">...</span>
             ) : (
-              <p className="text-yellow-400 font-bold text-lg">{pointBalance.toLocaleString()}</p>
+              <span className="text-yellow-400 font-bold text-xl">{pointBalance.toLocaleString()}</span>
             )}
           </div>
-        </div>
 
-        {/* WebSocket Status and Profile - Right Side */}
-        <div className="flex items-center gap-3 flex-shrink-0">
           {/* WebSocket Status */}
           <div className="bg-[#1f1f1f] border border-[#2a2a2a] rounded-lg px-3 py-2 flex flex-col gap-1.5">
             {/* WebSocket Server Status */}
@@ -200,10 +187,11 @@ const Header = () => {
             >
               <FaUserCircle className="text-[#f5f5f5] text-4xl" />
               <div className="flex flex-col items-start">
-                <h1 className="text-md text-[#f5f5f5] font-semibold">{getUserDisplayName()}</h1>
-                {businessName && (
-                  <p className="text-xs text-gray-400">{businessName}</p>
+              {businessName && (
+                  <h1 className="text-xl text-[#f5f5f5] font-semibold">{businessName}</h1>
                 )}
+                <p className="text-base text-gray-400">{getUserDisplayName()}</p>
+                
               </div>
             </div>
           </div>

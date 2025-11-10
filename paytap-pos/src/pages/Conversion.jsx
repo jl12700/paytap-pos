@@ -33,6 +33,7 @@ const Conversion = ({ show, onClose }) => {
   const [loadingPoints, setLoadingPoints] = useState(true); // ✅ Loading state for points
   const [gcashError, setGcashError] = useState(''); // ✅ GCash validation error
   const [amountError, setAmountError] = useState(''); // ✅ Amount validation error
+  const [gcashConfirmed, setGcashConfirmed] = useState(false); // ✅ GCash number confirmation
 
   const paymentMethods = [
     { id: 'gcash', name: 'GCash', icon: FaQrcode, color: 'bg-blue-500' },
@@ -410,6 +411,7 @@ const Conversion = ({ show, onClose }) => {
       chosenPaymentMethod: formData.paymentMethod,
       conversionAmount: formData.amount
     }));
+    setGcashConfirmed(false); // Reset GCash confirmation
     setShowConversionPopup(true);
   };
 
@@ -610,6 +612,41 @@ const Conversion = ({ show, onClose }) => {
               <h3 className="text-lg font-semibold text-white mb-4">Confirm Conversion</h3>
               <p className="text-gray-300 mb-2">Vendor: {conversionData.vendorName}</p>
               <p className="text-gray-300 mb-2">Method: {conversionData.chosenPaymentMethod}</p>
+              
+              {/* GCash Number Confirmation */}
+              {conversionData.chosenPaymentMethod === 'gcash' && (
+                <div className="mb-4">
+                  <p className="text-gray-300 mb-2">
+                    GCash Number: <span className="font-semibold text-white">{formData.cardNumber}</span>
+                  </p>
+                  <div className="bg-[#1f1f1f] p-3 rounded-lg border border-gray-600">
+                    <p className="text-yellow-400 text-sm mb-3">
+                      ⚠️ Is this GCash number correct?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setGcashConfirmed(true)}
+                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
+                          gcashConfirmed
+                            ? 'bg-green-600 text-white border-2 border-green-400'
+                            : 'bg-[#2a2a2a] text-gray-300 border border-gray-600 hover:border-green-500'
+                        }`}
+                      >
+                        {gcashConfirmed && '✓ '}Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowConversionPopup(false)}
+                        className="flex-1 py-2 px-4 rounded-lg bg-[#2a2a2a] text-gray-300 border border-gray-600 hover:border-red-500 font-medium"
+                      >
+                        No
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <p className="text-gray-300 mb-2">
                 Amount: {conversionData.conversionAmount} points
               </p>
@@ -622,9 +659,11 @@ const Conversion = ({ show, onClose }) => {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={handleConversionSubmit}
-                  disabled={loading}
+                  disabled={loading || (conversionData.chosenPaymentMethod === 'gcash' && !gcashConfirmed)}
                   className={`flex-1 py-2 rounded-lg ${
-                    loading ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'
+                    loading || (conversionData.chosenPaymentMethod === 'gcash' && !gcashConfirmed)
+                      ? 'bg-gray-600 cursor-not-allowed' 
+                      : 'bg-green-600 hover:bg-green-700'
                   } text-white`}
                 >
                   {loading ? 'Submitting...' : 'Confirm'}

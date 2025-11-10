@@ -225,16 +225,11 @@ const Auth = () => {
                         to="/forgot-password"
                         className="text-blue-400 hover:text-blue-300 text-sm transition underline"
                     >
-                        Forgot your password? Contact admin to reset your password.
+                        Forgot your password?
                     </Link>
                 </div>
 
-                {/* Additional Info */}
-                <div className="mt-6 text-center">
-                    <p className="text-gray-400 text-sm">
-                        Need help? Contact your administrator
-                    </p>
-                </div>
+                
             </div>
         </div>
     );

@@ -165,7 +165,7 @@ const EditProfileModal = ({ isOpen, onClose }) => {
     if (user?.email) {
       return user.email.split('@')[0];
     }
-    return 'John Veneracion'; // Fallback
+    return 'Vendor Name'; // Fallback
   };
 
   const getUserEmail = () => {
