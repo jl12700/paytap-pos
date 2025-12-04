@@ -8,7 +8,7 @@ import SalesChartModal from '../components/SalesChartModal'
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { auth } from '../firebase/config'
-import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint } from 'react-icons/fa'
+import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint, FaFileInvoice } from 'react-icons/fa'
 
 const Orders = () => {
     const [viewMode, setViewMode] = useState("cards");
@@ -19,6 +19,7 @@ const Orders = () => {
     const [loading, setLoading] = useState(true);
     const [salesHistory, setSalesHistory] = useState([]);
     const [showChartModal, setShowChartModal] = useState(false);
+    const [vendorInfo, setVendorInfo] = useState(null);
     const [stats, setStats] = useState({
         totalOrders: 0,
         totalRevenue: 0,
@@ -28,12 +29,30 @@ const Orders = () => {
 
     useEffect(() => {
         fetchOrders();
+        fetchVendorInfo();
     }, []);
+
+    const fetchVendorInfo = async () => {
+        try {
+            const currentVendor = auth.currentUser;
+            if (!currentVendor) return;
+
+            const vendorDoc = await getDocs(query(
+                collection(db, 'vendors'),
+                where('__name__', '==', currentVendor.uid)
+            ));
+
+            if (!vendorDoc.empty) {
+                setVendorInfo(vendorDoc.docs[0].data());
+            }
+        } catch (error) {
+            console.error('Error fetching vendor info:', error);
+        }
+    };
 
     const fetchOrders = async () => {
         setLoading(true);
         try {
-            // ✅ Get current vendor
             const currentVendor = auth.currentUser;
             
             if (!currentVendor) {
@@ -46,11 +65,9 @@ const Orders = () => {
             console.log('📍 Fetching orders for vendor:', currentVendor.uid);
 
             const ordersRef = collection(db, 'orders');
-            
-            // ✅ Query with vendor filter
             const q = query(
                 ordersRef,
-                where('vendorId', '==', currentVendor.uid),  // ✅ FILTER BY VENDOR
+                where('vendorId', '==', currentVendor.uid),
                 orderBy('createdAt', 'desc')
             );
 
@@ -101,7 +118,6 @@ const Orders = () => {
         const history = [];
         const ordersByPeriod = {};
 
-        // Group orders by period
         orders.forEach(order => {
             if (!order.createdAt || !order.totalAmount) return;
             
@@ -150,7 +166,6 @@ const Orders = () => {
             ordersByPeriod[periodKey].orderCount += 1;
         });
 
-        // Convert to array and sort by date (newest first)
         const historyArray = Object.values(ordersByPeriod).sort((a, b) => {
             return b.date - a.date;
         });
@@ -158,7 +173,6 @@ const Orders = () => {
         setSalesHistory(historyArray);
     };
 
-    // Helper function to get week number
     const getWeekNumber = (date) => {
         const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
         const dayNum = d.getUTCDay() || 7;
@@ -167,7 +181,6 @@ const Orders = () => {
         return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
     };
 
-    // Helper function to get week start (Monday)
     const getWeekStart = (date) => {
         const d = new Date(date);
         const day = d.getDay();
@@ -179,51 +192,413 @@ const Orders = () => {
         if (activeTab === 'history') {
             calculateSalesHistory();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orders, historyPeriod, activeTab]);
 
-    const handlePrint = () => {
-        if (activeTab !== 'history' || salesHistory.length === 0) {
-            alert('No sales data available to print.');
-            return;
-        }
-
-        // Calculate summary statistics
-        const totalRevenue = salesHistory.reduce((sum, item) => sum + item.totalRevenue, 0);
-        const totalOrders = salesHistory.reduce((sum, item) => sum + item.orderCount, 0);
-        const averageRevenue = salesHistory.length > 0 ? totalRevenue / salesHistory.length : 0;
-        const averageOrders = salesHistory.length > 0 ? totalOrders / salesHistory.length : 0;
-
-        // Get period label
-        const periodLabels = {
-            daily: 'Daily Sales',
-            weekly: 'Weekly Sales',
-            monthly: 'Monthly Sales',
-            yearly: 'Yearly Sales'
-        };
-        const periodLabel = periodLabels[historyPeriod] || 'Sales History';
-
-        // Get vendor info
+    // ✅ NEW: End of Day Sales Report
+    const printEndOfDayReport = () => {
         const currentVendor = auth.currentUser;
+        const businessName = vendorInfo?.businessName || 'PayTap POS';
+        const location = vendorInfo?.location || 'N/A';
         const vendorEmail = currentVendor?.email || 'N/A';
+        
+        // Get today's orders
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayOrders = orders.filter(order => {
+            const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+            return orderDate >= today;
+        });
 
-        // Create print-friendly HTML
+        // Calculate totals
+        let cashTotal = 0;
+        let gcashTotal = 0;
+        let totalSales = 0;
+        let completedCount = 0;
+        let cancelledCount = 0;
+
+        todayOrders.forEach(order => {
+            if (order.status?.toLowerCase() === 'completed') {
+                completedCount++;
+                totalSales += order.totalAmount || 0;
+                
+                if (order.paymentMethod === 'cash') {
+                    cashTotal += order.totalAmount || 0;
+                } else if (order.paymentMethod === 'gcash') {
+                    gcashTotal += order.totalAmount || 0;
+                }
+            } else {
+                cancelledCount++;
+            }
+        });
+
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Sales Report - ${periodLabel}</title>
+                <title>End of Day Report - ${today.toLocaleDateString()}</title>
                 <style>
                     @media print {
-                        @page {
-                            margin: 1cm;
-                        }
-                        body {
-                            margin: 0;
-                            padding: 20px;
-                            font-family: Arial, sans-serif;
-                        }
+                        @page { margin: 1cm; }
+                        body { margin: 0; padding: 20px; }
+                    }
+                    * { box-sizing: border-box; }
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        padding: 30px;
+                        background: white;
+                        color: #000;
+                        max-width: 900px;
+                        margin: 0 auto;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 3px solid #000;
+                        padding-bottom: 20px;
+                    }
+                    .header h1 {
+                        margin: 0 0 10px 0;
+                        font-size: 28px;
+                        color: #000;
+                        font-weight: bold;
+                    }
+                    .header .business-name {
+                        font-size: 20px;
+                        font-weight: bold;
+                        margin: 10px 0;
+                        color: #333;
+                    }
+                    .header p {
+                        margin: 5px 0;
+                        color: #666;
+                        font-size: 13px;
+                    }
+                    .report-info {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 10px;
+                        margin-bottom: 30px;
+                        background: #f8f8f8;
+                        padding: 15px;
+                        border-radius: 5px;
+                    }
+                    .report-info div {
+                        font-size: 13px;
+                    }
+                    .report-info strong {
+                        color: #000;
+                    }
+                    .summary-section {
+                        margin-bottom: 30px;
+                    }
+                    .summary-section h2 {
+                        font-size: 18px;
+                        margin-bottom: 15px;
+                        color: #000;
+                        border-bottom: 2px solid #ddd;
+                        padding-bottom: 8px;
+                    }
+                    .summary-grid {
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 15px;
+                        margin-bottom: 20px;
+                    }
+                    .summary-card {
+                        background: #f0f0f0;
+                        padding: 15px;
+                        border-radius: 5px;
+                        border-left: 4px solid #333;
+                    }
+                    .summary-card h3 {
+                        margin: 0 0 8px 0;
+                        font-size: 12px;
+                        color: #666;
+                        font-weight: normal;
+                        text-transform: uppercase;
+                    }
+                    .summary-card p {
+                        margin: 0;
+                        font-size: 24px;
+                        font-weight: bold;
+                        color: #000;
+                    }
+                    .summary-card.highlight {
+                        background: #e8f5e9;
+                        border-left-color: #4caf50;
+                    }
+                    .summary-card.highlight p {
+                        color: #2e7d32;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 30px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #000;
+                        color: white;
+                        padding: 12px 8px;
+                        text-align: left;
+                        font-weight: bold;
+                        font-size: 11px;
+                        text-transform: uppercase;
+                    }
+                    td {
+                        padding: 10px 8px;
+                        border-bottom: 1px solid #ddd;
+                        vertical-align: top;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .total-row {
+                        font-weight: bold;
+                        background: #e8f5e9 !important;
+                        border-top: 2px solid #4caf50;
+                    }
+                    .total-row td {
+                        padding: 15px 8px;
+                        font-size: 14px;
+                    }
+                    .payment-breakdown {
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 15px;
+                        margin: 20px 0;
+                    }
+                    .payment-card {
+                        background: #f5f5f5;
+                        padding: 15px;
+                        border-radius: 5px;
+                        text-align: center;
+                    }
+                    .payment-card h3 {
+                        margin: 0 0 10px 0;
+                        font-size: 13px;
+                        color: #666;
+                        text-transform: uppercase;
+                    }
+                    .payment-card p {
+                        margin: 0;
+                        font-size: 22px;
+                        font-weight: bold;
+                        color: #000;
+                    }
+                    .items-list {
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .items-list div {
+                        padding: 2px 0;
+                    }
+                    .footer {
+                        margin-top: 40px;
+                        padding-top: 20px;
+                        border-top: 2px solid #ddd;
+                        text-align: center;
+                    }
+                    .signatures {
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 30px;
+                        margin: 30px 0;
+                    }
+                    .signature-box {
+                        text-align: center;
+                        padding: 20px;
+                    }
+                    .signature-line {
+                        border-top: 2px solid #000;
+                        margin: 50px 0 10px 0;
+                    }
+                    .signature-label {
+                        font-size: 12px;
+                        color: #666;
+                        text-transform: uppercase;
+                    }
+                    .print-date {
+                        text-align: right;
+                        margin-bottom: 20px;
+                        font-size: 11px;
+                        color: #999;
+                    }
+                    .status-badge {
+                        display: inline-block;
+                        padding: 4px 8px;
+                        border-radius: 3px;
+                        font-size: 10px;
+                        font-weight: bold;
+                    }
+                    .status-completed {
+                        background: #e8f5e9;
+                        color: #2e7d32;
+                    }
+                    .status-pending {
+                        background: #fff3e0;
+                        color: #e65100;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="print-date">Report Generated: ${new Date().toLocaleString()}</div>
+                
+                <div class="header">
+                    <h1>END OF DAY SALES REPORT</h1>
+                    <div class="business-name">${businessName}</div>
+                    <p>${location}</p>
+                    <p>Contact: ${vendorEmail}</p>
+                </div>
+                
+                <div class="report-info">
+                    <div><strong>Report Date:</strong> ${today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                    <div><strong>Report Time:</strong> ${new Date().toLocaleTimeString()}</div>
+                    <div><strong>Reporting Period:</strong> 12:00 AM - 11:59 PM</div>
+                    <div><strong>Prepared By:</strong> ${vendorEmail}</div>
+                </div>
+
+                <div class="summary-section">
+                    <h2>📊 Daily Summary</h2>
+                    <div class="summary-grid">
+                        <div class="summary-card highlight">
+                            <h3>Total Sales</h3>
+                            <p>₱${totalSales.toFixed(2)}</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3>Total Transactions</h3>
+                            <p>${completedCount}</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3>Average Transaction</h3>
+                            <p>₱${completedCount > 0 ? (totalSales / completedCount).toFixed(2) : '0.00'}</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3>Cancelled Orders</h3>
+                            <p>${cancelledCount}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="summary-section">
+                    <h2>💳 Payment Method Breakdown</h2>
+                    <div class="payment-breakdown">
+                        <div class="payment-card">
+                            <h3>Cash Payments</h3>
+                            <p>₱${cashTotal.toFixed(2)}</p>
+                        </div>
+                        <div class="payment-card">
+                            <h3>PayTap/GCash Payments</h3>
+                            <p>₱${gcashTotal.toFixed(2)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="summary-section">
+                    <h2>📝 Transaction Details</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 12%;">Time</th>
+                                <th style="width: 15%;">Order ID</th>
+                                <th style="width: 18%;">Customer</th>
+                                <th style="width: 25%;">Items</th>
+                                <th style="width: 10%;">Payment</th>
+                                <th style="width: 10%;">Status</th>
+                                <th style="width: 10%; text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${todayOrders.length > 0 ? todayOrders.map(order => {
+                                const orderTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+                                const itemsList = order.items?.map(item => 
+                                    `${item.name} (x${item.qty}) - ₱${(item.price * item.qty).toFixed(2)}`
+                                ).join('<br>') || 'N/A';
+                                const statusClass = order.status?.toLowerCase() === 'completed' ? 'status-completed' : 'status-pending';
+                                
+                                return `
+                                    <tr>
+                                        <td>${orderTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td><strong>${order.orderId || order.id.substring(0, 8)}</strong></td>
+                                        <td>${order.customerName || 'Walk-in'}</td>
+                                        <td>
+                                            <div class="items-list">
+                                                ${itemsList}
+                                            </div>
+                                        </td>
+                                        <td style="text-transform: uppercase;">${order.paymentMethod || 'N/A'}</td>
+                                        <td><span class="status-badge ${statusClass}">${order.status || 'Pending'}</span></td>
+                                        <td style="text-align: right;"><strong>₱${(order.totalAmount || 0).toFixed(2)}</strong></td>
+                                    </tr>
+                                `;
+                            }).join('') : '<tr><td colspan="7" style="text-align: center; padding: 30px;">No transactions today</td></tr>'}
+                            <tr class="total-row">
+                                <td colspan="6" style="text-align: right;"><strong>TOTAL SALES:</strong></td>
+                                <td style="text-align: right;"><strong>₱${totalSales.toFixed(2)}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="signatures">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Cashier / Prepared By</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Manager / Verified By</div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <p style="margin: 0; font-size: 12px; color: #666;">This is a computer-generated document. No signature is required.</p>
+                    <p style="margin: 5px 0 0 0; font-size: 11px; color: #999;">PayTap POS System © ${new Date().getFullYear()}</p>
+                </div>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
+
+    // Updated period sales report to show store name and detailed table
+    const printPeriodSalesReport = () => {
+        if (salesHistory.length === 0) {
+            alert('No sales data available to print.');
+            return;
+        }
+
+        const currentVendor = auth.currentUser;
+        const businessName = vendorInfo?.businessName || 'PayTap POS';
+        const location = vendorInfo?.location || 'N/A';
+        const vendorEmail = currentVendor?.email || 'N/A';
+
+        const totalRevenue = salesHistory.reduce((sum, item) => sum + item.totalRevenue, 0);
+        const totalOrders = salesHistory.reduce((sum, item) => sum + item.orderCount, 0);
+
+        const periodLabels = {
+            daily: 'Daily Sales Report',
+            weekly: 'Weekly Sales Report',
+            monthly: 'Monthly Sales Report',
+            yearly: 'Yearly Sales Report'
+        };
+        const periodLabel = periodLabels[historyPeriod] || 'Sales History';
+
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${periodLabel} - ${businessName}</title>
+                <style>
+                    @media print {
+                        @page { margin: 1cm; }
+                        body { margin: 0; padding: 20px; }
                     }
                     body {
                         font-family: Arial, sans-serif;
@@ -242,34 +617,15 @@ const Orders = () => {
                         font-size: 24px;
                         color: #333;
                     }
+                    .header .business-name {
+                        font-size: 18px;
+                        font-weight: bold;
+                        margin: 10px 0;
+                    }
                     .header p {
                         margin: 5px 0;
                         color: #666;
                         font-size: 14px;
-                    }
-                    .stats {
-                        display: grid;
-                        grid-template-columns: repeat(4, 1fr);
-                        gap: 15px;
-                        margin-bottom: 30px;
-                    }
-                    .stat-card {
-                        background: #f5f5f5;
-                        padding: 15px;
-                        border-radius: 8px;
-                        text-align: center;
-                    }
-                    .stat-card h3 {
-                        margin: 0 0 5px 0;
-                        font-size: 12px;
-                        color: #666;
-                        font-weight: normal;
-                    }
-                    .stat-card p {
-                        margin: 0;
-                        font-size: 20px;
-                        font-weight: bold;
-                        color: #333;
                     }
                     table {
                         width: 100%;
@@ -294,55 +650,17 @@ const Orders = () => {
                         font-weight: bold;
                         background: #e8f5e9 !important;
                     }
-                    .footer {
-                        margin-top: 30px;
-                        padding-top: 20px;
-                        border-top: 1px solid #ddd;
-                        text-align: center;
-                        font-size: 12px;
-                        color: #666;
-                    }
-                    .print-date {
-                        text-align: right;
-                        margin-bottom: 20px;
-                        font-size: 12px;
-                        color: #666;
-                    }
-                    .vendor-info {
-                        text-align: center;
-                        margin-bottom: 10px;
-                        font-size: 12px;
-                        color: #666;
-                    }
                 </style>
             </head>
             <body>
-                <div class="print-date">Printed on: ${new Date().toLocaleString()}</div>
                 <div class="header">
-                    <h1>Sales Tracking Report</h1>
-                    <p>${periodLabel}</p>
-                    <div class="vendor-info">Vendor: ${vendorEmail}</div>
+                    <h1>${periodLabel}</h1>
+                    <div class="business-name">${businessName}</div>
+                    <p>${location}</p>
+                    <p>Contact: ${vendorEmail}</p>
+                    <p>Generated: ${new Date().toLocaleString()}</p>
                 </div>
                 
-                <div class="stats">
-                    <div class="stat-card">
-                        <h3>Total Revenue</h3>
-                        <p>₱${totalRevenue.toFixed(2)}</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total Orders</h3>
-                        <p>${totalOrders}</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Average Revenue</h3>
-                        <p>₱${averageRevenue.toFixed(2)}</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Average Orders</h3>
-                        <p>${averageOrders.toFixed(1)}</p>
-                    </div>
-                </div>
-
                 <table>
                     <thead>
                         <tr>
@@ -366,10 +684,6 @@ const Orders = () => {
                         </tr>
                     </tbody>
                 </table>
-
-                <div class="footer">
-                    <p>Generated by PayTap POS System</p>
-                </div>
             </body>
             </html>
         `);
@@ -408,7 +722,6 @@ const Orders = () => {
                     <h1 className='text-[#f5f5f5] text-2xl font-bold tracking-wider'>Sales Tracking</h1>
                 </div>
                 
-                {/* View Toggle */}
                 {activeTab === 'orders' && (
                     <div className='flex items-center gap-2'>
                         <button
@@ -429,7 +742,7 @@ const Orders = () => {
 
             {/* Tabs */}
             <div className='flex items-center gap-2 px-10 py-3 border-b border-gray-700 bg-[#1a1a1a]'>
-                <button
+            <button
                     onClick={() => setActiveTab("orders")}
                     className={`px-4 py-2 rounded-lg font-semibold transition ${
                         activeTab === "orders"
@@ -437,214 +750,231 @@ const Orders = () => {
                             : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
                     }`}
                 >
-                    All Orders
+                    Orders
                 </button>
                 <button
                     onClick={() => setActiveTab("history")}
-                    className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                    className={`px-4 py-2 rounded-lg font-semibold transition ${
                         activeTab === "history"
                             ? "bg-blue-600 text-white"
                             : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
                     }`}
                 >
-                    <FaChartLine />
                     Sales History
                 </button>
             </div>
 
-            {/* History Period Tabs */}
-            {activeTab === 'history' && (
-                <div className='flex items-center gap-2 px-10 py-3 border-b border-gray-700 bg-[#1a1a1a]'>
-                    <button
-                        onClick={handlePrint}
-                        className='px-4 py-2 rounded-lg font-semibold transition bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2'
-                        title="Print Sales Report"
-                    >
-                        <FaPrint />
-                        Print
-                    </button>
-                    <button
-                        onClick={() => setHistoryPeriod("daily")}
-                        className={`px-4 py-2 rounded-lg font-semibold transition ${
-                            historyPeriod === "daily"
-                                ? "bg-green-600 text-white"
-                                : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
-                        }`}
-                    >
-                        Daily Sales
-                    </button>
-                    <button
-                        onClick={() => setHistoryPeriod("weekly")}
-                        className={`px-4 py-2 rounded-lg font-semibold transition ${
-                            historyPeriod === "weekly"
-                                ? "bg-green-600 text-white"
-                                : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
-                        }`}
-                    >
-                        Weekly Sales
-                    </button>
-                    <button
-                        onClick={() => setHistoryPeriod("monthly")}
-                        className={`px-4 py-2 rounded-lg font-semibold transition ${
-                            historyPeriod === "monthly"
-                                ? "bg-green-600 text-white"
-                                : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
-                        }`}
-                    >
-                        Monthly Sales
-                    </button>
-                    <button
-                        onClick={() => setHistoryPeriod("yearly")}
-                        className={`px-4 py-2 rounded-lg font-semibold transition ${
-                            historyPeriod === "yearly"
-                                ? "bg-green-600 text-white"
-                                : "bg-[#2a2a2a] text-gray-400 hover:bg-[#333]"
-                        }`}
-                    >
-                        Yearly Sales
-                    </button>
-                </div>
-            )}
-
-            {/* Stats Summary */}
-            <div className='px-10 py-4 bg-[#1a1a1a] border-b border-gray-700'>
-                <div className='grid grid-cols-4 gap-4'>
-                    <div className='bg-[#2a2a2a] rounded-lg p-3'>
-                        <p className='text-gray-400 text-sm'>Total Orders</p>
-                        <p className='text-white text-xl font-bold'>{stats.totalOrders}</p>
-                    </div>
-                    <div className='bg-[#2a2a2a] rounded-lg p-3'>
-                        <p className='text-gray-400 text-sm'>Total Revenue</p>
-                        <p className='text-green-400 text-xl font-bold'>₱{stats.totalRevenue.toFixed(2)}</p>
-                    </div>
-                    <div className='bg-[#2a2a2a] rounded-lg p-3'>
-                        <p className='text-gray-400 text-sm'>Completed</p>
-                        <p className='text-green-400 text-xl font-bold'>{stats.completedOrders}</p>
-                    </div>
-                    <div className='bg-[#2a2a2a] rounded-lg p-3'>
-                        <p className='text-gray-400 text-sm'>Pending</p>
-                        <p className='text-yellow-400 text-xl font-bold'>{stats.pendingOrders}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Sort - Only show for orders tab */}
-            {activeTab === 'orders' && (
-                <div className='flex items-center justify-end px-10 py-4 border-b border-gray-700'>
-                    {/* Sort By */}
-                    <div className='flex items-center gap-2'>
-                        <FaSortAmountDown className='text-gray-400' />
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                            className='bg-[#2a2a2a] text-white px-3 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                        >
-                            <option value="dateDesc">Newest First</option>
-                            <option value="dateAsc">Oldest First</option>
-                            <option value="amountDesc">Highest Amount</option>
-                            <option value="amountAsc">Lowest Amount</option>
-                        </select>
-                    </div>
-                </div>
-            )}
-
-            {/* Content Display */}
-            <div className='flex-1 overflow-y-auto px-10 py-4'>
-                {loading ? (
-                    <div className='text-center py-8'>
-                        <p className='text-gray-400'>Loading orders...</p>
-                    </div>
-                ) : activeTab === 'history' ? (
-                    // Sales History View
-                    salesHistory.length === 0 ? (
-                        <div className='text-center py-8'>
-                            <p className='text-gray-400'>No sales history found.</p>
+            {/* Main Content */}
+            <div className='flex-1 overflow-y-auto px-10 py-6'>
+                {activeTab === 'orders' ? (
+                    <>
+                        {/* Stats Cards */}
+                        <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
+                            <div className='bg-[#2a2a2a] p-4 rounded-lg border border-gray-700'>
+                                <p className='text-gray-400 text-sm'>Total Orders</p>
+                                <p className='text-white text-2xl font-bold'>{stats.totalOrders}</p>
+                            </div>
+                            <div className='bg-[#2a2a2a] p-4 rounded-lg border border-gray-700'>
+                                <p className='text-gray-400 text-sm'>Total Revenue</p>
+                                <p className='text-white text-2xl font-bold'>₱{stats.totalRevenue.toFixed(2)}</p>
+                            </div>
+                            <div className='bg-[#2a2a2a] p-4 rounded-lg border border-gray-700'>
+                                <p className='text-gray-400 text-sm'>Completed</p>
+                                <p className='text-green-500 text-2xl font-bold'>{stats.completedOrders}</p>
+                            </div>
+                            <div className='bg-[#2a2a2a] p-4 rounded-lg border border-gray-700'>
+                                <p className='text-gray-400 text-sm'>Pending</p>
+                                <p className='text-yellow-500 text-2xl font-bold'>{stats.pendingOrders}</p>
+                            </div>
                         </div>
-                    ) : (
-                        <div className='space-y-6'>
-                            {/* Chart Section */}
-                            <div className='bg-[#1a1a1a] rounded-lg p-4'>
-                                <div className='flex items-center justify-between mb-4'>
-                                    <h3 className='text-[#f5f5f5] text-xl font-semibold flex items-center gap-2'>
-                                        <FaChartLine className='text-blue-400' />
-                                        Revenue Trend
-                                    </h3>
-                                    <button
-                                        onClick={() => setShowChartModal(true)}
-                                        className='px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center gap-2'
-                                    >
-                                        <FaChartBar />
-                                        View Detailed Analytics
-                                    </button>
-                                </div>
-                                <SalesChart data={salesHistory} type='line' period={historyPeriod} />
+
+                        {/* Controls */}
+                        <div className='flex items-center justify-between mb-6'>
+                            <div className='flex items-center gap-2'>
+                                <FaSortAmountDown className='text-gray-400' />
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value)}
+                                    className='bg-[#2a2a2a] text-white px-4 py-2 rounded-lg border border-gray-700'
+                                >
+                                    <option value="dateDesc">Newest First</option>
+                                    <option value="dateAsc">Oldest First</option>
+                                    <option value="amountDesc">Highest Amount</option>
+                                    <option value="amountAsc">Lowest Amount</option>
+                                </select>
                             </div>
 
-                            {/* History List */}
-                            <div className='space-y-4'>
-                                <h3 className='text-[#f5f5f5] text-lg font-semibold'>Period Breakdown</h3>
-                                {salesHistory.map((period, index) => (
-                                    <div
-                                        key={period.periodKey}
-                                        className='bg-[#262626] rounded-lg p-4 hover:bg-[#2a2a2a] transition-colors'
-                                    >
-                                        <div className='flex items-center justify-between'>
-                                            <div className='flex-1'>
-                                                <div className='flex items-center gap-3 mb-2'>
-                                                    <FaCalendarAlt className='text-blue-400' />
-                                                    <h3 className='text-[#f5f5f5] text-lg font-semibold'>
-                                                        {period.periodLabel}
-                                                    </h3>
-                                                </div>
-                                                <div className='flex items-center gap-4 text-sm text-gray-400 ml-8'>
-                                                    <span>{period.orderCount} {period.orderCount === 1 ? 'order' : 'orders'}</span>
-                                                </div>
-                                            </div>
-                                            <div className='text-right'>
-                                                <p className='text-green-400 text-2xl font-bold'>
-                                                    ₱{period.totalRevenue.toFixed(2)}
-                                                </p>
-                                                <p className='text-gray-400 text-sm'>Revenue</p>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <button
+                                onClick={printEndOfDayReport}
+                                className='flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition'
+                            >
+                                <FaFileInvoice />
+                                End of Day Report
+                            </button>
+                        </div>
+
+                        {/* Orders Display */}
+                        {loading ? (
+                            <div className='text-center text-gray-400 py-20'>
+                                <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto'></div>
+                                <p className='mt-4'>Loading orders...</p>
+                            </div>
+                        ) : sortedOrders.length === 0 ? (
+                            <div className='text-center text-gray-400 py-20'>
+                                <p className='text-xl'>No orders found</p>
+                            </div>
+                        ) : viewMode === "cards" ? (
+                            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+                                {sortedOrders.map(order => (
+                                    <OrderCard key={order.id} order={order} />
                                 ))}
                             </div>
-                        </div>
-                    )
+                        ) : (
+                            <div className='space-y-2'>
+                                {sortedOrders.map(order => (
+                                    <OrderListItem key={order.id} order={order} />
+                                ))}
+                            </div>
+                        )}
+                    </>
                 ) : (
-                    // Orders View
-                    sortedOrders.length === 0 ? (
-                        <div className='text-center py-8'>
-                            <p className='text-gray-400'>No orders found.</p>
+                    <>
+                        {/* Sales History */}
+                        <div className='mb-6'>
+                            <div className='flex items-center justify-between mb-4'>
+                                <div className='flex items-center gap-2'>
+                                    <FaCalendarAlt className='text-gray-400' />
+                                    <select
+                                        value={historyPeriod}
+                                        onChange={(e) => setHistoryPeriod(e.target.value)}
+                                        className='bg-[#2a2a2a] text-white px-4 py-2 rounded-lg border border-gray-700'
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                </div>
+
+                                <div className='flex items-center gap-2'>
+                                    <button
+                                        onClick={() => setShowChartModal(true)}
+                                        className='flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition'
+                                    >
+                                        <FaChartLine />
+                                        View Chart
+                                    </button>
+                                    <button
+                                        onClick={printPeriodSalesReport}
+                                        className='flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition'
+                                    >
+                                        <FaPrint />
+                                        Print Report
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Store Info Banner */}
+                            {vendorInfo && (
+                                <div className='bg-gradient-to-r from-blue-900 to-purple-900 p-4 rounded-lg mb-6 border border-blue-700'>
+                                    <div className='flex items-center justify-between'>
+                                        <div>
+                                            <h3 className='text-white text-lg font-bold'>{vendorInfo.businessName}</h3>
+                                            <p className='text-gray-300 text-sm'>{vendorInfo.location}</p>
+                                        </div>
+                                        <div className='text-right'>
+                                            <p className='text-gray-300 text-sm'>Total Sales Periods</p>
+                                            <p className='text-white text-2xl font-bold'>{salesHistory.length}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Sales History Table */}
+                            <div className='bg-[#2a2a2a] rounded-lg border border-gray-700 overflow-hidden'>
+                                <div className='overflow-x-auto'>
+                                    <table className='w-full'>
+                                        <thead className='bg-[#1a1a1a]'>
+                                            <tr>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Period</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Store Name</th>
+                                                <th className='text-right text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Orders</th>
+                                                <th className='text-right text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Revenue</th>
+                                                <th className='text-right text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Avg Order</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {salesHistory.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="5" className='text-center text-gray-400 py-12'>
+                                                        No sales data available for this period
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                salesHistory.map((item, index) => (
+                                                    <tr key={index} className='hover:bg-[#333] transition'>
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                            {item.periodLabel}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                            {vendorInfo?.businessName || 'N/A'}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-right text-white border-b border-gray-800'>
+                                                            <span className='bg-blue-600 px-3 py-1 rounded-full text-sm'>
+                                                                {item.orderCount}
+                                                            </span>
+                                                        </td>
+                                                        <td className='px-6 py-4 text-right text-green-400 font-semibold border-b border-gray-800'>
+                                                            ₱{item.totalRevenue.toFixed(2)}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-right text-gray-300 border-b border-gray-800'>
+                                                            ₱{(item.totalRevenue / item.orderCount).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                        {salesHistory.length > 0 && (
+                                            <tfoot className='bg-[#1a1a1a]'>
+                                                <tr>
+                                                    <td colSpan="2" className='px-6 py-4 text-white font-bold border-t-2 border-blue-600'>
+                                                        TOTAL
+                                                    </td>
+                                                    <td className='px-6 py-4 text-right text-white font-bold border-t-2 border-blue-600'>
+                                                        {salesHistory.reduce((sum, item) => sum + item.orderCount, 0)}
+                                                    </td>
+                                                    <td className='px-6 py-4 text-right text-green-400 font-bold border-t-2 border-blue-600'>
+                                                        ₱{salesHistory.reduce((sum, item) => sum + item.totalRevenue, 0).toFixed(2)}
+                                                    </td>
+                                                    <td className='px-6 py-4 text-right text-gray-300 font-bold border-t-2 border-blue-600'>
+                                                        ₱{(
+                                                            salesHistory.reduce((sum, item) => sum + item.totalRevenue, 0) /
+                                                            salesHistory.reduce((sum, item) => sum + item.orderCount, 0)
+                                                        ).toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
                         </div>
-                    ) : viewMode === "cards" ? (
-                        <div className='flex flex-wrap gap-6'>
-                            {sortedOrders.map((order) => (
-                                <OrderCard key={order.id} order={order} />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className='space-y-3'>
-                            {sortedOrders.map((order) => (
-                                <OrderListItem key={order.id} order={order} />
-                            ))}
-                        </div>
-                    )
+                    </>
                 )}
             </div>
 
-            {/* Sales Chart Modal */}
-            <SalesChartModal
-                isOpen={showChartModal}
-                onClose={() => setShowChartModal(false)}
-                salesHistory={salesHistory}
-                period={historyPeriod}
-            />
+            {/* Chart Modal */}
+            {showChartModal && (
+                <SalesChartModal
+                    salesData={salesHistory}
+                    period={historyPeriod}
+                    onClose={() => setShowChartModal(false)}
+                />
+            )}
 
             <BottomNav />
         </section>
-    )
-}
+    );
+};
 
-export default Orders
+export default Orders;

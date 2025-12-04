@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import { MdRestaurantMenu } from "react-icons/md";
 import { FaTrash, FaQrcode, FaWallet } from "react-icons/fa";
 import { useSelector } from "react-redux";
@@ -12,6 +13,7 @@ import { getCurrentUser } from "../firebase/authService";
 import { addPoints } from "../firebase/pointsService";
 
 const Menu = () => {
+  const navigate = useNavigate();
   const customerData = useSelector((state) => state.customer);
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
@@ -147,6 +149,7 @@ const Menu = () => {
       alert("Order successfully placed!");
       setCart([]);
       setShowCheckoutModal(false);
+      navigate('/');
     } catch (error) {
       console.error("❌ Error placing order:", error);
       alert("Failed to place order: " + error.message);

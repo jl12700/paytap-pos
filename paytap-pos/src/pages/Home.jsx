@@ -9,7 +9,8 @@ import  RecentOrders  from '../components/RecentOrders'
 import PopularDishes from '../components/PopularDishes'
 import EarningsModal from '../components/EarningsModal'
 import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore'
-import { db } from '../firebase/config'
+import { db, auth } from '../firebase/config'
+import { onAuthStateChanged } from 'firebase/auth'
 
 const Home = () => {
     const [showEarningsModal, setShowEarningsModal] = useState(false);
@@ -17,9 +18,22 @@ const Home = () => {
     const [paytapPoints, setPaytapPoints] = useState(0);
     const [cashPHP, setCashPHP] = useState(0);
     const [percentageChange, setPercentageChange] = useState(0);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     useEffect(() => {
-        fetchTodayEarnings();
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in
+                setIsAuthenticated(true);
+                fetchTodayEarnings();
+            } else {
+                // User is NOT signed in
+                setIsAuthenticated(false);
+                console.log("User not authenticated - please sign in");
+            }
+        });
+
+        return () => unsubscribe();
     }, []);
 
     const fetchTodayEarnings = async () => {
