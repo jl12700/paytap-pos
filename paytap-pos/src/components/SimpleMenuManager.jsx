@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { addMenuItem, getMenuItems, updateMenuItem, deleteMenuItem } from '../firebase/menuService';
-import { FaEdit, FaTrash, FaTimes, FaSave } from 'react-icons/fa';
+import { verifyOwnerCredentials, hasOwnerCredentials } from '../firebase/ownerAuthService';
+import { FaEdit, FaTrash, FaTimes, FaSave, FaLock } from 'react-icons/fa';
 
 const SimpleMenuManager = ({ isOpen, onClose }) => {
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [isFirstTime, setIsFirstTime] = useState(false);
 
   // Form state
   const [itemForm, setItemForm] = useState({
@@ -30,9 +37,74 @@ const SimpleMenuManager = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     if (isOpen) {
-      loadMenuItems();
+      // Check if credentials are set and show auth modal
+      checkCredentials();
+    } else {
+      // Reset authentication state when modal closes
+      setIsAuthenticated(false);
+      setShowAuthModal(false);
+      setAuthForm({ username: '', password: '' });
+      setAuthError('');
     }
   }, [isOpen]);
+
+  const checkCredentials = async () => {
+    try {
+      const hasCredentials = await hasOwnerCredentials();
+      if (!hasCredentials) {
+        setIsFirstTime(true);
+      }
+      setShowAuthModal(true);
+    } catch (error) {
+      console.error('Error checking credentials:', error);
+      setShowAuthModal(true);
+    }
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+
+    try {
+      const isValid = await verifyOwnerCredentials(authForm.username, authForm.password);
+      if (isValid) {
+        setIsAuthenticated(true);
+        setShowAuthModal(false);
+        setAuthForm({ username: '', password: '' });
+        // Load menu items after successful authentication
+        await loadMenuItems();
+      } else {
+        setAuthError('Invalid username or password');
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+      setAuthError(error.message || 'Authentication failed. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleCancelAuth = () => {
+    setShowAuthModal(false);
+    setAuthForm({ username: '', password: '' });
+    setAuthError('');
+    setIsAuthenticated(false);
+    setIsFirstTime(false);
+    onClose(); // Close the menu manager if auth is cancelled
+  };
+
+  const handleClose = () => {
+    // Reset authentication state when closing
+    setIsAuthenticated(false);
+    setShowAuthModal(false);
+    setAuthForm({ username: '', password: '' });
+    setAuthError('');
+    setIsFirstTime(false);
+    setEditingItem(null);
+    setItemForm({ name: '', price: '', description: '', isAvailable: true });
+    onClose();
+  };
 
   const handleAddItem = async (e) => {
     e.preventDefault();
@@ -100,14 +172,106 @@ const SimpleMenuManager = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  // Show authentication modal if not authenticated
+  if (showAuthModal && !isAuthenticated) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={handleCancelAuth}>
+        <div className="bg-[#1a1a1a] rounded-lg w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-700">
+            <div className="flex items-center gap-3">
+              <FaLock className="text-blue-500" size={24} />
+              <h2 className="text-2xl font-bold text-[#f5f5f5]">Owner Verification</h2>
+            </div>
+            <button
+              onClick={handleCancelAuth}
+              className="text-gray-500 hover:text-gray-300 transition"
+            >
+              <FaTimes size={24} />
+            </button>
+          </div>
+
+          <div className="p-6">
+            {isFirstTime ? (
+              <div className="mb-4 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
+                <p className="text-blue-300 text-sm">
+                  <strong>First Time Setup:</strong> Please set your owner username and password to secure menu management access.
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-300 mb-6 text-center">
+                Please enter your owner credentials to access menu management
+              </p>
+            )}
+
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                <input
+                  type="text"
+                  value={authForm.username}
+                  onChange={(e) => setAuthForm({...authForm, username: e.target.value})}
+                  className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-md text-[#f5f5f5] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter username"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({...authForm, password: e.target.value})}
+                  className="w-full p-3 bg-[#2a2a2a] border border-gray-600 rounded-md text-[#f5f5f5] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+
+              {authError && (
+                <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg">
+                  <p className="text-red-300 text-sm">{authError}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-md font-semibold disabled:opacity-50 transition"
+                >
+                  {authLoading ? 'Verifying...' : (isFirstTime ? 'Set Credentials' : 'Verify')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelAuth}
+                  className="px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show menu manager content only if authenticated
+  if (!isAuthenticated) return null;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={handleClose}>
       <div className="bg-[#1a1a1a] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-2xl font-bold text-[#f5f5f5]">Menu Items Manager</h2>
+          <div className="flex items-center gap-3">
+            <FaLock className="text-green-500" size={20} />
+            <h2 className="text-2xl font-bold text-[#f5f5f5]">Menu Items Manager</h2>
+          </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-500 hover:text-gray-300 transition"
           >
             <FaTimes size={24} />

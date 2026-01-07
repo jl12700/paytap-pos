@@ -2,16 +2,17 @@ import React, { useState, useEffect } from 'react'
 import BottomNav from '../components/shared/BottomNav'
 import OrderCard from '../components/orders/OrderCard'
 import OrderListItem from '../components/orders/OrderListItem'
+import ReceiptModal from '../components/ReceiptModal'
 import BackButton from '../components/shared/BackButton'
 import SalesChart from '../components/SalesChart'
 import SalesChartModal from '../components/SalesChartModal'
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { auth } from '../firebase/config'
-import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint, FaFileInvoice } from 'react-icons/fa'
+import { FaList, FaTh, FaCalendarAlt, FaSortAmountDown, FaChartLine, FaChartBar, FaPrint, FaFileInvoice, FaCheckCircle, FaClock, FaCheckDouble, FaCircle } from 'react-icons/fa'
 
 const Orders = () => {
-    const [viewMode, setViewMode] = useState("cards");
+    const [viewMode, setViewMode] = useState("table");
     const [sortBy, setSortBy] = useState("dateDesc");
     const [activeTab, setActiveTab] = useState("orders");
     const [historyPeriod, setHistoryPeriod] = useState("daily");
@@ -20,6 +21,9 @@ const Orders = () => {
     const [salesHistory, setSalesHistory] = useState([]);
     const [showChartModal, setShowChartModal] = useState(false);
     const [vendorInfo, setVendorInfo] = useState(null);
+    const [expandedPeriod, setExpandedPeriod] = useState(null);
+    const [selectedOrder, setSelectedOrder] = useState(null);
+    const [showReceipt, setShowReceipt] = useState(false);
     const [stats, setStats] = useState({
         totalOrders: 0,
         totalRevenue: 0,
@@ -157,16 +161,25 @@ const Orders = () => {
                     orders: [],
                     totalRevenue: 0,
                     orderCount: 0,
-                    date: orderDate
+                    date: orderDate,
+                    storeNames: new Set() // Track unique store names
                 };
             }
 
             ordersByPeriod[periodKey].orders.push(order);
             ordersByPeriod[periodKey].totalRevenue += order.totalAmount || 0;
             ordersByPeriod[periodKey].orderCount += 1;
+            
+            // Add store name from order (where students buy)
+            if (order.businessName) {
+                ordersByPeriod[periodKey].storeNames.add(order.businessName);
+            }
         });
 
-        const historyArray = Object.values(ordersByPeriod).sort((a, b) => {
+        const historyArray = Object.values(ordersByPeriod).map(item => ({
+            ...item,
+            storeNames: Array.from(item.storeNames) // Convert Set to Array
+        })).sort((a, b) => {
             return b.date - a.date;
         });
 
@@ -194,20 +207,31 @@ const Orders = () => {
         }
     }, [orders, historyPeriod, activeTab]);
 
-    // ✅ NEW: End of Day Sales Report
+    // ✅ End of Day Sales Report
     const printEndOfDayReport = () => {
         const currentVendor = auth.currentUser;
         const businessName = vendorInfo?.businessName || 'PayTap POS';
         const location = vendorInfo?.location || 'N/A';
         const vendorEmail = currentVendor?.email || 'N/A';
         
-        // Get today's orders
+        // Get today's orders only
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
         const todayOrders = orders.filter(order => {
+            if (!order.createdAt) return false;
             const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
-            return orderDate >= today;
+            // Only include orders from today (between today 00:00 and tomorrow 00:00)
+            return orderDate >= today && orderDate < tomorrow;
         });
+
+        // Show alert if no transactions today
+        if (todayOrders.length === 0) {
+            alert('No transactions found for today.');
+            return;
+        }
 
         // Calculate totals
         let cashTotal = 0;
@@ -394,6 +418,9 @@ const Orders = () => {
                     .items-list div {
                         padding: 2px 0;
                     }
+                    .items-list div:last-child {
+                        border-bottom: none;
+                    }
                     .footer {
                         margin-top: 40px;
                         padding-top: 20px;
@@ -500,41 +527,53 @@ const Orders = () => {
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 12%;">Time</th>
-                                <th style="width: 15%;">Order ID</th>
-                                <th style="width: 18%;">Customer</th>
-                                <th style="width: 25%;">Items</th>
-                                <th style="width: 10%;">Payment</th>
-                                <th style="width: 10%;">Status</th>
-                                <th style="width: 10%; text-align: right;">Amount</th>
+                                <th style="width: 8%;">Time</th>
+                                <th style="width: 10%;">Order ID</th>
+                                <th style="width: 12%;">Customer</th>
+                                <th style="width: 12%;">Store Name</th>
+                                <th style="width: 30%;">Items Ordered</th>
+                                <th style="width: 8%;">Payment</th>
+                                <th style="width: 8%;">Status</th>
+                                <th style="width: 12%; text-align: right;">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${todayOrders.length > 0 ? todayOrders.map(order => {
                                 const orderTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
-                                const itemsList = order.items?.map(item => 
-                                    `${item.name} (x${item.qty}) - ₱${(item.price * item.qty).toFixed(2)}`
-                                ).join('<br>') || 'N/A';
                                 const statusClass = order.status?.toLowerCase() === 'completed' ? 'status-completed' : 'status-pending';
+                                
+                                // Detailed items list with individual prices and quantities
+                                const itemsList = order.items?.map(item => {
+                                    const itemTotal = (item.price || 0) * (item.qty || 0);
+                                    return `
+                                        <div style="padding: 4px 0; border-bottom: 1px solid #eee;">
+                                            <strong>${item.name || 'N/A'}</strong><br>
+                                            <span style="font-size: 10px; color: #666;">
+                                                Price: ₱${(item.price || 0).toFixed(2)} × Qty: ${item.qty || 0} = ₱${itemTotal.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    `;
+                                }).join('') || '<div style="color: #999;">No items</div>';
                                 
                                 return `
                                     <tr>
-                                        <td>${orderTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td><strong>${order.orderId || order.id.substring(0, 8)}</strong></td>
-                                        <td>${order.customerName || 'Walk-in'}</td>
+                                        <td style="font-size: 11px;">${orderTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td><strong style="font-size: 11px;">${order.orderId || (order.id ? order.id.substring(0, 8) : 'N/A')}</strong></td>
+                                        <td style="font-size: 11px;">${order.customerName || 'Walk-in'}</td>
+                                        <td style="font-size: 11px;">${order.businessName || 'N/A'}</td>
                                         <td>
-                                            <div class="items-list">
+                                            <div class="items-list" style="max-height: 150px; overflow-y: auto;">
                                                 ${itemsList}
                                             </div>
                                         </td>
-                                        <td style="text-transform: uppercase;">${order.paymentMethod || 'N/A'}</td>
+                                        <td style="text-transform: uppercase; font-size: 11px;">${order.paymentMethod || 'N/A'}</td>
                                         <td><span class="status-badge ${statusClass}">${order.status || 'Pending'}</span></td>
                                         <td style="text-align: right;"><strong>₱${(order.totalAmount || 0).toFixed(2)}</strong></td>
                                     </tr>
                                 `;
-                            }).join('') : '<tr><td colspan="7" style="text-align: center; padding: 30px;">No transactions today</td></tr>'}
+                            }).join('') : '<tr><td colspan="8" style="text-align: center; padding: 30px;">No transactions today</td></tr>'}
                             <tr class="total-row">
-                                <td colspan="6" style="text-align: right;"><strong>TOTAL SALES:</strong></td>
+                                <td colspan="7" style="text-align: right;"><strong>TOTAL SALES:</strong></td>
                                 <td style="text-align: right;"><strong>₱${totalSales.toFixed(2)}</strong></td>
                             </tr>
                         </tbody>
@@ -589,6 +628,9 @@ const Orders = () => {
         };
         const periodLabel = periodLabels[historyPeriod] || 'Sales History';
 
+        // Flatten all orders from all periods for detailed transaction table
+        const allOrders = salesHistory.flatMap(item => item.orders);
+
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <!DOCTYPE html>
@@ -601,47 +643,68 @@ const Orders = () => {
                         body { margin: 0; padding: 20px; }
                     }
                     body {
-                        font-family: Arial, sans-serif;
+                        font-family: 'Segoe UI', Arial, sans-serif;
                         padding: 20px;
                         background: white;
                         color: black;
+                        max-width: 1200px;
+                        margin: 0 auto;
                     }
                     .header {
                         text-align: center;
                         margin-bottom: 30px;
-                        border-bottom: 2px solid #333;
+                        border-bottom: 3px solid #000;
                         padding-bottom: 20px;
                     }
                     .header h1 {
-                        margin: 0;
-                        font-size: 24px;
-                        color: #333;
+                        margin: 0 0 10px 0;
+                        font-size: 28px;
+                        color: #000;
+                        font-weight: bold;
                     }
                     .header .business-name {
-                        font-size: 18px;
+                        font-size: 20px;
                         font-weight: bold;
                         margin: 10px 0;
+                        color: #333;
                     }
                     .header p {
                         margin: 5px 0;
                         color: #666;
-                        font-size: 14px;
+                        font-size: 13px;
+                    }
+                    .summary-section {
+                        margin-bottom: 30px;
+                        background: #f8f8f8;
+                        padding: 15px;
+                        border-radius: 5px;
+                    }
+                    .summary-section h2 {
+                        font-size: 18px;
+                        margin-bottom: 15px;
+                        color: #000;
+                        border-bottom: 2px solid #ddd;
+                        padding-bottom: 8px;
                     }
                     table {
                         width: 100%;
                         border-collapse: collapse;
                         margin-bottom: 30px;
+                        font-size: 12px;
                     }
                     th {
-                        background: #333;
+                        background: #000;
                         color: white;
-                        padding: 12px;
+                        padding: 12px 8px;
                         text-align: left;
                         font-weight: bold;
+                        font-size: 11px;
+                        text-transform: uppercase;
                     }
                     td {
-                        padding: 10px 12px;
+                        padding: 10px 8px;
                         border-bottom: 1px solid #ddd;
+                        vertical-align: top;
                     }
                     tr:nth-child(even) {
                         background: #f9f9f9;
@@ -649,6 +712,37 @@ const Orders = () => {
                     .total-row {
                         font-weight: bold;
                         background: #e8f5e9 !important;
+                        border-top: 2px solid #4caf50;
+                    }
+                    .total-row td {
+                        padding: 15px 8px;
+                        font-size: 14px;
+                    }
+                    .items-list {
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .items-list div {
+                        padding: 4px 0;
+                        border-bottom: 1px solid #eee;
+                    }
+                    .items-list div:last-child {
+                        border-bottom: none;
+                    }
+                    .status-badge {
+                        display: inline-block;
+                        padding: 4px 8px;
+                        border-radius: 3px;
+                        font-size: 10px;
+                        font-weight: bold;
+                    }
+                    .status-completed {
+                        background: #e8f5e9;
+                        color: #2e7d32;
+                    }
+                    .status-pending {
+                        background: #fff3e0;
+                        color: #e65100;
                     }
                 </style>
             </head>
@@ -661,29 +755,95 @@ const Orders = () => {
                     <p>Generated: ${new Date().toLocaleString()}</p>
                 </div>
                 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Period</th>
-                            <th style="text-align: right;">Orders</th>
-                            <th style="text-align: right;">Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${salesHistory.map(item => `
+                <div class="summary-section">
+                    <h2>📊 Period Summary</h2>
+                    <table>
+                        <thead>
                             <tr>
-                                <td>${item.periodLabel}</td>
-                                <td style="text-align: right;">${item.orderCount}</td>
-                                <td style="text-align: right;">₱${item.totalRevenue.toFixed(2)}</td>
+                                <th>Period</th>
+                                <th>Store Name</th>
+                                <th style="text-align: right;">Orders</th>
+                                <th style="text-align: right;">Revenue</th>
+                                <th style="text-align: right;">Avg Order</th>
                             </tr>
-                        `).join('')}
-                        <tr class="total-row">
-                            <td><strong>Total</strong></td>
-                            <td style="text-align: right;"><strong>${totalOrders}</strong></td>
-                            <td style="text-align: right;"><strong>₱${totalRevenue.toFixed(2)}</strong></td>
-                        </tr>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${salesHistory.map(item => `
+                                <tr>
+                                    <td>${item.periodLabel}</td>
+                                    <td>${item.storeNames && item.storeNames.length > 0 ? (item.storeNames.length === 1 ? item.storeNames[0] : `${item.storeNames[0]} (+${item.storeNames.length - 1} more)`) : 'N/A'}</td>
+                                    <td style="text-align: right;">${item.orderCount}</td>
+                                    <td style="text-align: right;">₱${item.totalRevenue.toFixed(2)}</td>
+                                    <td style="text-align: right;">₱${(item.totalRevenue / item.orderCount).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                            <tr class="total-row">
+                                <td colspan="2"><strong>Total</strong></td>
+                                <td style="text-align: right;"><strong>${totalOrders}</strong></td>
+                                <td style="text-align: right;"><strong>₱${totalRevenue.toFixed(2)}</strong></td>
+                                <td style="text-align: right;"><strong>₱${(totalRevenue / totalOrders).toFixed(2)}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="summary-section">
+                    <h2>📝 Detailed Transaction History</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 8%;">Date/Time</th>
+                                <th style="width: 10%;">Order ID</th>
+                                <th style="width: 12%;">Customer</th>
+                                <th style="width: 12%;">Store Name</th>
+                                <th style="width: 30%;">Items Ordered</th>
+                                <th style="width: 8%;">Payment</th>
+                                <th style="width: 8%;">Status</th>
+                                <th style="width: 12%; text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allOrders.length > 0 ? allOrders.map(order => {
+                                const orderTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+                                const statusClass = order.status?.toLowerCase() === 'completed' ? 'status-completed' : 'status-pending';
+                                
+                                // Detailed items list
+                                const itemsList = order.items?.map(item => {
+                                    const itemTotal = (item.price || 0) * (item.qty || 0);
+                                    return `
+                                        <div>
+                                            <strong>${item.name || 'N/A'}</strong><br>
+                                            <span style="font-size: 10px; color: #666;">
+                                                Price: ₱${(item.price || 0).toFixed(2)} × Qty: ${item.qty || 0} = ₱${itemTotal.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    `;
+                                }).join('') || '<div style="color: #999;">No items</div>';
+                                
+                                return `
+                                    <tr>
+                                        <td style="font-size: 11px;">${orderTime.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td><strong style="font-size: 11px;">${order.orderId || (order.id ? order.id.substring(0, 8) : 'N/A')}</strong></td>
+                                        <td style="font-size: 11px;">${order.customerName || 'Walk-in'}</td>
+                                        <td style="font-size: 11px;">${order.businessName || 'N/A'}</td>
+                                        <td>
+                                            <div class="items-list" style="max-height: 150px; overflow-y: auto;">
+                                                ${itemsList}
+                                            </div>
+                                        </td>
+                                        <td style="text-transform: uppercase; font-size: 11px;">${order.paymentMethod || 'N/A'}</td>
+                                        <td><span class="status-badge ${statusClass}">${order.status || 'Pending'}</span></td>
+                                        <td style="text-align: right;"><strong>₱${(order.totalAmount || 0).toFixed(2)}</strong></td>
+                                    </tr>
+                                `;
+                            }).join('') : '<tr><td colspan="8" style="text-align: center; padding: 30px;">No transactions available</td></tr>'}
+                            <tr class="total-row">
+                                <td colspan="7" style="text-align: right;"><strong>TOTAL:</strong></td>
+                                <td style="text-align: right;"><strong>₱${totalRevenue.toFixed(2)}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </body>
             </html>
         `);
@@ -725,16 +885,18 @@ const Orders = () => {
                 {activeTab === 'orders' && (
                     <div className='flex items-center gap-2'>
                         <button
-                            onClick={() => setViewMode("cards")}
-                            className={`p-2 rounded-lg ${viewMode === "cards" ? 'bg-blue-600 text-white' : 'bg-[#2a2a2a] text-gray-400'}`}
+                            onClick={() => setViewMode("table")}
+                            className={`p-2 rounded-lg ${viewMode === "table" ? 'bg-blue-600 text-white' : 'bg-[#2a2a2a] text-gray-400'}`}
+                            title="Table View"
                         >
-                            <FaTh />
+                            <FaList />
                         </button>
                         <button
                             onClick={() => setViewMode("list")}
                             className={`p-2 rounded-lg ${viewMode === "list" ? 'bg-blue-600 text-white' : 'bg-[#2a2a2a] text-gray-400'}`}
+                            title="List View"
                         >
-                            <FaList />
+                            <FaTh />
                         </button>
                     </div>
                 )}
@@ -823,11 +985,117 @@ const Orders = () => {
                             <div className='text-center text-gray-400 py-20'>
                                 <p className='text-xl'>No orders found</p>
                             </div>
-                        ) : viewMode === "cards" ? (
-                            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                                {sortedOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} />
-                                ))}
+                        ) : viewMode === "table" ? (
+                            <div className='bg-[#2a2a2a] rounded-lg border border-gray-700 overflow-hidden'>
+                                <div className='overflow-x-auto'>
+                                    <table className='w-full'>
+                                        <thead className='bg-[#1a1a1a]'>
+                                            <tr>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Date/Time</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Order ID</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Customer</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Store Name</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Items</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Payment</th>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Status</th>
+                                                <th className='text-right text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sortedOrders.map(order => {
+                                                const orderTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+                                                const getStatusColor = (status) => {
+                                                    switch (status?.toLowerCase()) {
+                                                        case 'completed':
+                                                            return 'bg-green-900 text-green-300';
+                                                        case 'pending':
+                                                        case 'in progress':
+                                                            return 'bg-yellow-900 text-yellow-300';
+                                                        case 'ready':
+                                                            return 'bg-blue-900 text-blue-300';
+                                                        default:
+                                                            return 'bg-gray-700 text-gray-300';
+                                                    }
+                                                };
+                                                const getStatusIcon = (status) => {
+                                                    switch (status?.toLowerCase()) {
+                                                        case 'completed':
+                                                            return <FaCheckCircle className='inline mr-1' />;
+                                                        case 'pending':
+                                                        case 'in progress':
+                                                            return <FaClock className='inline mr-1' />;
+                                                        case 'ready':
+                                                            return <FaCheckDouble className='inline mr-1' />;
+                                                        default:
+                                                            return <FaCircle className='inline mr-1' />;
+                                                    }
+                                                };
+                                                return (
+                                                    <tr 
+                                                        key={order.id} 
+                                                        className='hover:bg-[#333] transition cursor-pointer'
+                                                        onClick={() => {
+                                                            setSelectedOrder(order);
+                                                            setShowReceipt(true);
+                                                        }}
+                                                    >
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800 text-sm'>
+                                                            {orderTime.toLocaleString('en-US', { 
+                                                                month: 'short', 
+                                                                day: 'numeric', 
+                                                                year: 'numeric',
+                                                                hour: '2-digit', 
+                                                                minute: '2-digit' 
+                                                            })}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                            <strong className='text-sm'>{order.orderId || order.id?.substring(0, 8) || 'N/A'}</strong>
+                                                        </td>
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800 text-sm'>
+                                                            {order.customerName || 'Walk-in'}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-white border-b border-gray-800 text-sm'>
+                                                            {order.businessName || 'N/A'}
+                                                        </td>
+                                                        <td className='px-6 py-4 text-gray-300 border-b border-gray-800 text-sm'>
+                                                            <div className='max-w-xs'>
+                                                                {order.items?.map((item, idx) => (
+                                                                    <div key={idx} className='text-xs mb-1'>
+                                                                        {item.name} (x{item.qty}) - ₱{(item.price * item.qty).toFixed(2)}
+                                                                    </div>
+                                                                )) || 'N/A'}
+                                                            </div>
+                                                        </td>
+                                                        <td className='px-6 py-4 text-gray-300 border-b border-gray-800 text-sm capitalize'>
+                                                            {order.paymentMethod === 'gcash' ? 'GCash' : order.paymentMethod === 'cash' ? 'Cash' : order.paymentMethod || 'N/A'}
+                                                        </td>
+                                                        <td className='px-6 py-4 border-b border-gray-800'>
+                                                            <span className={`px-2 py-1 rounded text-xs ${getStatusColor(order.status)}`}>
+                                                                {getStatusIcon(order.status)}
+                                                                {order.status || 'Pending'}
+                                                            </span>
+                                                        </td>
+                                                        <td className='px-6 py-4 text-right text-green-400 font-semibold border-b border-gray-800'>
+                                                            ₱{(order.totalAmount || 0).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        {sortedOrders.length > 0 && (
+                                            <tfoot className='bg-[#1a1a1a]'>
+                                                <tr>
+                                                    <td colSpan="7" className='px-6 py-4 text-white font-bold border-t-2 border-blue-600 text-right'>
+                                                        TOTAL
+                                                    </td>
+                                                    <td className='px-6 py-4 text-right text-green-400 font-bold border-t-2 border-blue-600'>
+                                                        ₱{stats.totalRevenue.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
+                                    </table>
+                                </div>
                             </div>
                         ) : (
                             <div className='space-y-2'>
@@ -896,6 +1164,7 @@ const Orders = () => {
                                     <table className='w-full'>
                                         <thead className='bg-[#1a1a1a]'>
                                             <tr>
+                                                <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700' style={{width: '5%'}}></th>
                                                 <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Period</th>
                                                 <th className='text-left text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Store Name</th>
                                                 <th className='text-right text-gray-400 font-semibold px-6 py-4 border-b border-gray-700'>Orders</th>
@@ -906,38 +1175,117 @@ const Orders = () => {
                                         <tbody>
                                             {salesHistory.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="5" className='text-center text-gray-400 py-12'>
+                                                    <td colSpan="6" className='text-center text-gray-400 py-12'>
                                                         No sales data available for this period
                                                     </td>
                                                 </tr>
                                             ) : (
                                                 salesHistory.map((item, index) => (
-                                                    <tr key={index} className='hover:bg-[#333] transition'>
-                                                        <td className='px-6 py-4 text-white border-b border-gray-800'>
-                                                            {item.periodLabel}
-                                                        </td>
-                                                        <td className='px-6 py-4 text-white border-b border-gray-800'>
-                                                            {vendorInfo?.businessName || 'N/A'}
-                                                        </td>
-                                                        <td className='px-6 py-4 text-right text-white border-b border-gray-800'>
-                                                            <span className='bg-blue-600 px-3 py-1 rounded-full text-sm'>
-                                                                {item.orderCount}
-                                                            </span>
-                                                        </td>
-                                                        <td className='px-6 py-4 text-right text-green-400 font-semibold border-b border-gray-800'>
-                                                            ₱{item.totalRevenue.toFixed(2)}
-                                                        </td>
-                                                        <td className='px-6 py-4 text-right text-gray-300 border-b border-gray-800'>
-                                                            ₱{(item.totalRevenue / item.orderCount).toFixed(2)}
-                                                        </td>
-                                                    </tr>
+                                                    <React.Fragment key={index}>
+                                                        <tr className='hover:bg-[#333] transition cursor-pointer' onClick={() => setExpandedPeriod(expandedPeriod === index ? null : index)}>
+                                                            <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                                <span className='text-blue-400 font-bold'>{expandedPeriod === index ? '▼' : '▶'}</span>
+                                                            </td>
+                                                            <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                                {item.periodLabel}
+                                                            </td>
+                                                            <td className='px-6 py-4 text-white border-b border-gray-800'>
+                                                                {item.storeNames && item.storeNames.length > 0 
+                                                                    ? (item.storeNames.length === 1 
+                                                                        ? item.storeNames[0] 
+                                                                        : `${item.storeNames[0]} (+${item.storeNames.length - 1} more)`)
+                                                                    : 'N/A'}
+                                                            </td>
+                                                            <td className='px-6 py-4 text-right text-white border-b border-gray-800'>
+                                                                <span className='bg-blue-600 px-3 py-1 rounded-full text-sm'>
+                                                                    {item.orderCount}
+                                                                </span>
+                                                            </td>
+                                                            <td className='px-6 py-4 text-right text-green-400 font-semibold border-b border-gray-800'>
+                                                                ₱{item.totalRevenue.toFixed(2)}
+                                                            </td>
+                                                            <td className='px-6 py-4 text-right text-gray-300 border-b border-gray-800'>
+                                                                ₱{(item.totalRevenue / item.orderCount).toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                        {expandedPeriod === index && (
+                                                            <tr>
+                                                                <td colSpan="6" className='px-6 py-4 bg-[#1a1a1a] border-b border-gray-800'>
+                                                                    <div className='mt-4'>
+                                                                        <h3 className='text-white font-semibold text-lg mb-4'>Transaction Details</h3>
+                                                                        <div className='overflow-x-auto'>
+                                                                            <table className='w-full'>
+                                                                                <thead className='bg-[#2a2a2a]'>
+                                                                                    <tr>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Time</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Order ID</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Customer</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Store Name</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Items</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Payment</th>
+                                                                                        <th className='text-left text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Status</th>
+                                                                                        <th className='text-right text-gray-400 font-semibold px-4 py-3 border-b border-gray-700'>Amount</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {item.orders.map((order, orderIndex) => {
+                                                                                        const orderTime = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+                                                                                        return (
+                                                                                            <tr key={orderIndex} className='hover:bg-[#333] transition'>
+                                                                                                <td className='px-4 py-3 text-gray-300 border-b border-gray-800 text-sm'>
+                                                                                                    {orderTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-white border-b border-gray-800 text-sm'>
+                                                                                                    <strong>{order.orderId || order.id?.substring(0, 8) || 'N/A'}</strong>
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-white border-b border-gray-800 text-sm'>
+                                                                                                    {order.customerName || 'Walk-in'}
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-white border-b border-gray-800 text-sm'>
+                                                                                                    {order.businessName || 'N/A'}
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-gray-300 border-b border-gray-800 text-sm'>
+                                                                                                    <div className='max-w-xs'>
+                                                                                                        {order.items?.map((item, idx) => (
+                                                                                                            <div key={idx} className='text-xs'>
+                                                                                                                {item.name} (x{item.qty}) - ₱{(item.price * item.qty).toFixed(2)}
+                                                                                                            </div>
+                                                                                                        )) || 'N/A'}
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-gray-300 border-b border-gray-800 text-sm capitalize'>
+                                                                                                    {order.paymentMethod || 'N/A'}
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 border-b border-gray-800'>
+                                                                                                    <span className={`px-2 py-1 rounded text-xs ${
+                                                                                                        order.status?.toLowerCase() === 'completed' 
+                                                                                                            ? 'bg-green-900 text-green-300' 
+                                                                                                            : 'bg-yellow-900 text-yellow-300'
+                                                                                                    }`}>
+                                                                                                        {order.status || 'Pending'}
+                                                                                                    </span>
+                                                                                                </td>
+                                                                                                <td className='px-4 py-3 text-right text-green-400 font-semibold border-b border-gray-800 text-sm'>
+                                                                                                    ₱{(order.totalAmount || 0).toFixed(2)}
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 ))
                                             )}
                                         </tbody>
                                         {salesHistory.length > 0 && (
                                             <tfoot className='bg-[#1a1a1a]'>
                                                 <tr>
-                                                    <td colSpan="2" className='px-6 py-4 text-white font-bold border-t-2 border-blue-600'>
+                                                    <td colSpan="3" className='px-6 py-4 text-white font-bold border-t-2 border-blue-600'>
                                                         TOTAL
                                                     </td>
                                                     <td className='px-6 py-4 text-right text-white font-bold border-t-2 border-blue-600'>
@@ -969,6 +1317,18 @@ const Orders = () => {
                     salesData={salesHistory}
                     period={historyPeriod}
                     onClose={() => setShowChartModal(false)}
+                />
+            )}
+
+            {/* Receipt Modal */}
+            {selectedOrder && (
+                <ReceiptModal
+                    isOpen={showReceipt}
+                    onClose={() => {
+                        setShowReceipt(false);
+                        setSelectedOrder(null);
+                    }}
+                    order={selectedOrder}
                 />
             )}
 
